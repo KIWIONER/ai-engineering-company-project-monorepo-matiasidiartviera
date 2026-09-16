@@ -4,7 +4,7 @@ from jose import JWTError, jwt
 from datetime import timedelta
 from tinydb import Query
 from services.api.models import Token, UserResponse, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest
-from services.api.database import get_user_by_email, get_user_by_id, get_db, save_reset_token, get_reset_token, mark_token_used
+from services.api.database import get_user_by_email, get_user_by_id, get_tinydb, save_reset_token, get_reset_token, mark_token_used
 from services.api.security import verify_password, create_access_token, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash
 from services.api.email_utils import send_reset_email
 import secrets
@@ -63,7 +63,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 @router.get("/me", response_model=UserResponse)
 def read_users_me(current_user: dict = Depends(get_current_user)):
     
-    db = get_db()
+    db = get_tinydb()
     ProfileQuery = Query()
     prof = db.table('profiles').search(ProfileQuery.user_id == current_user['id'])
     
@@ -111,7 +111,7 @@ def reset_password(request: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail="Usuario no encontrado.")
         
     # Actualizar la contraseña
-    db = get_db()
+    db = get_tinydb()
     users_table = db.table('users')
     UserQuery = Query()
     new_hashed_password = get_password_hash(request.new_password)
@@ -130,7 +130,7 @@ def change_password(request: ChangePasswordRequest, current_user: dict = Depends
         raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta.")
         
     # Actualizar la contraseña
-    db = get_db()
+    db = get_tinydb()
     users_table = db.table('users')
     UserQuery = Query()
     new_hashed_password = get_password_hash(request.new_password)

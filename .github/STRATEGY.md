@@ -1,113 +1,140 @@
-# README
+# Hito — Backend: Gestión de Inventario con ORM y Doble Base de Datos
 
-## Gestión de Errores
+> **Antes de empezar:** Lee tu `CONTEXT-company.md` antes de escribir ningún código — define las entidades específicas, los nombres de campos y las restricciones de negocio para tu implementación.
 
-### 🎯 Tu reto
-**📌 Estás construyendo sobre tu copia del monorepo de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.**
+## 🎯 Tu reto
 
-Llevas varios hitos construyendo la plataforma de tu empresa: un sitio web corporativo, un frontend en Next.js, un backend en Python/FastAPI y scripts que procesan datos reales. El repositorio crece — y con él, la superficie donde las cosas pueden fallar.
+📌 **Estás construyendo sobre tu copia del monorepo de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.**
 
-Tu tech lead ha abierto un ticket de revisión de código con un mensaje claro: el sistema no tiene una estrategia coherente de gestión de errores. Las llamadas a la API pueden fallar en silencio, faltan estados de carga, los usuarios ven mensajes técnicos crudos (o simplemente nada), y los scripts de fondo se rompen sin dejar rastro útil. Antes de que el siguiente hito introduzca más complejidad, el equipo necesita corregir esto.
+Ya has construido — o se espera que tengas — la API y la capa de autenticación bajo `services/`. Si FastAPI + auth TinyDB (`User` / `get_current_user`) aún no está en tu monorepo, completa los proyectos de autenticación (o monta esa capa) antes de empezar este hito: aquí extiendes ese servicio; no creas uno nuevo desde cero.
 
-Tu tarea es auditar todo el repositorio existente y aplicar una estrategia de gestión de errores consistente en todas las capas: frontend, backend y scripts.
+Ahora el equipo de operaciones ha enviado una RFP a la unidad tecnológica: la empresa necesita un sistema centralizado de gestión de inventario antes de la próxima revisión operativa.
 
-El tech lead ha compartido las siguientes notas en el ticket:
+Tu tech lead ha convertido esa RFP en una decisión arquitectónica que condiciona todo lo que construirás aquí: la autenticación permanece en TinyDB (búsquedas rápidas, locales y basadas en documentos), y todos los datos de negocio — productos, órdenes de entrada y órdenes de salida — se mueven a Supabase (una base de datos PostgreSQL alojada en la nube). Tu aplicación FastAPI mantendrá dos conexiones de base de datos simultáneas y deberá usarlas de forma deliberada: cada petición llega al almacén correcto.
 
-#### Lo que necesitamos
-- Ningún error debe romper la aplicación ni dejar al usuario en un estado indefinido.
-- Toda operación asíncrona en el frontend debe tener tres estados visibles: cargando, éxito y error.
-- Los mensajes de error que ve el usuario deben ser legibles — nunca un stack trace, un código de estado o un error de parseo de JSON en crudo.
-- Todo estado de error debe ofrecer una salida clara: un botón de reintentar, un enlace a la página principal o instrucciones para contactar soporte.
-- En el backend y los scripts, las excepciones deben capturarse en el ámbito correcto — no con un único try/catch que envuelva toda la función.
-- Nunca debe aparecer información sensible en la salida de errores enviada al cliente.
-- Esta es una tarea de ingeniería transversal — no una nueva funcionalidad. El entregable es una versión más limpia y robusta del repositorio que ya has construido. Al terminar este proyecto, cualquier usuario que encuentre un problema en tu plataforma sabrá qué ha pasado y qué puede hacer.
+Esto no es solo un ejercicio de persistencia. El equipo de operaciones incluyó una restricción no negociable en el brief:
 
-### 🌱 Cómo iniciar el proyecto
-Este proyecto trabaja directamente sobre el monorepo de tu empresa — el mismo que llevas construyendo desde el Hito 1.
+> *"Los niveles de stock no se pueden modificar directamente. La única forma de cambiar el inventario es registrando una orden — ya sea una orden de entrada que añade stock, o una orden de salida que lo reduce. Cada orden debe ser trazable al usuario que la creó."*
 
-1. Abre el monorepo en tu editor o Codespace.
-2. Crea una nueva rama para este trabajo: `git switch -c feature/error-handling-audit`.
-3. Trabaja en cada capa del código de forma sistemática (ver checklist más abajo).
-4. Haz commits con mensajes claros que expliquen qué corregiste y por qué.
-5. No necesitas un nuevo repositorio ni un boilerplate.
+Tu trabajo es hacer cumplir esa regla a nivel de API y de modelos, usando un ORM para traducir clases Python en tablas relacionales en Supabase. Todos los endpoints de inventario deben agruparse bajo el prefijo de router `/inventory`.
 
-### 🤖 Usar tu coding agent para detectar oportunidades
-Antes de hacer cualquier cambio manualmente, usa tu coding agent para escanear el repositorio y localizar las carencias más críticas. A continuación tienes una plantilla de prompt que puedes adaptar y ejecutar en el agente que uses (Cursor, Copilot, Claude Code, etc.).
+### ¿Qué es un ORM y por qué importa aquí?
 
-Estúdiala, ajusta las partes marcadas con `[corchetes]` y hazla tuya — un buen prompt de detección te ahorrará horas de lectura manual.
+Un ORM (Object-Relational Mapper) es una capa de traducción: una clase Python se convierte en una tabla, una instancia en una fila y un atributo en una columna. No reemplaza conocer SQL — entender lo que el ORM genera por debajo es lo que permite usarlo correctamente y depurar errores cuando algo falla. En este hito usarás **SQLModel**, que combina el motor ORM de SQLAlchemy con el sistema de tipos de Pydantic. *No uses SQLAlchemy directamente.*
 
-> **Prompt de Detección:**
-> Eres un ingeniero de software senior auditando un repositorio en busca de problemas en la gestión de errores.
-> 
-> Analiza todo el repositorio ubicado en `[ruta o describe la estructura de tu repo, por ejemplo: "un frontend Next.js en /apps/web, un backend FastAPI en /apps/api y scripts Python en /scripts"]`.
-> 
-> Por cada archivo o módulo que revises, identifica y reporta:
-> 
-> 1. **TRY/CATCH AUSENTE** — operaciones asíncronas (fetch, await, lectura de archivos, parseo de JSON) que no tienen ningún manejo de errores.
-> 2. **CATCH DEMASIADO AMPLIO** — bloques try/catch o try/except que envuelven funciones enteras o secciones grandes de código en lugar de la operación peligrosa concreta.
-> 3. **FALLOS SILENCIOSOS** — errores capturados pero ignorados (bloques catch vacíos, `except: pass` sin acción).
-> 4. **EXPOSICIÓN DE ERRORES EN CRUDO** — lugares donde un mensaje de excepción, stack trace o código de estado podría llegar a la interfaz de usuario o a la respuesta de la API.
-> 5. **FILTRACIÓN DE DATOS SENSIBLES** — salidas de error o logs que podrían incluir secretos, cadenas de conexión a base de datos, rutas internas o datos personales.
-> 6. **ESTADOS DE CARGA/ERROR AUSENTES EN LA UI** — componentes del frontend que cargan datos pero no renderizan nada (o se rompen) cuando la petición está cargando o falla.
-> 7. **SIN LLAMADA A LA ACCIÓN PARA EL USUARIO** — estados de error que muestran un mensaje pero no ofrecen ninguna salida (sin reintentar, sin navegación, sin contacto de soporte).
-> 8. **SIN sys.exit EN FALLO DE SCRIPT** — scripts Python que encuentran un error crítico pero terminan con código 0 o sin código de salida explícito.
-> 
-> Por cada hallazgo, reporta:
-> - Ruta del archivo y número de línea (o rango)
-> - Categoría (de la lista anterior)
-> - Una línea describiendo el problema
-> - Corrección sugerida (breve — la implementación es responsabilidad del desarrollador)
-> 
-> No hagas ningún cambio. Entrega únicamente el informe de auditoría.
-> Prioriza los hallazgos por severidad: CRÍTICO > ALTO > MEDIO > BAJO.
+Antes de escribir cualquier consulta, debes conocer el **problema N+1**. Si cargas una lista de órdenes y después accedes a los datos del producto de cada una dentro de un bucle, generas una consulta adicional por elemento — degradando el rendimiento de forma silenciosa. Estructura tus consultas para cargar los datos relacionados desde el inicio, no en el momento del acceso.
 
-Ejecuta la auditoría, lee el informe con atención y usa el checklist de abajo para registrar tus correcciones.
+---
 
-# 💻 Qué debes hacer
+## Brief de tu tech lead
 
-## Frontend (Next.js / TypeScript)
+**De:** Tech Lead  
+**Asunto:** Hito — arquitectura de doble base de datos + ORM de inventario
 
-- [ ] Identifica todas las llamadas `fetch` o a la API en el frontend y verifica que cada una tenga un bloque `try/catch` específico para esa llamada.
-- [ ] Para cada operación asíncrona que cargue datos, implementa el patrón de UI de tres estados: cargando (spinner o skeleton), éxito (datos visibles), error (mensaje con llamada a la acción).
-- [ ] Reemplaza cualquier mensaje de error en crudo (`Error 500`, `Unexpected token`, etc.) por una explicación legible para el usuario.
-- [ ] Asegúrate de que todo estado de error incluya una llamada a la acción clara: un botón de reintentar, un enlace a la página principal o un prompt para contactar soporte.
-- [ ] Usa `optional chaining` (`?.`) al acceder a propiedades anidadas que podrían ser `undefined`.
-- [ ] Añade `defaults` o `fallbacks` seguros para valores que podrían ser `null` o `undefined` al renderizar.
-- [ ] Usa bloques `finally` para asegurar que los estados de carga siempre se limpien, independientemente del resultado.
+El PRD está listo. Esto es lo que debe hacer el sistema:
 
-## Backend (Python / FastAPI)
+- **Doble conexión:** La aplicación FastAPI conecta a dos bases de datos simultáneamente: TinyDB (existente, para usuarios y autenticación) y Supabase (nueva, para inventario y órdenes).
+- **Gestión de stock:** Los productos y el stock viven en Supabase. El stock no debe ser una columna editable directamente — siempre se deriva del historial de órdenes.
+- **Órdenes cruzadas:** Las órdenes de entrada incrementan el stock; las órdenes de salida lo reducen. Ambas se almacenan en Supabase y referencian el UUID del usuario de TinyDB — ninguna tabla de usuarios se replica en Supabase.
+- **Modelos y Schemas:** Los modelos ORM usan **SQLModel**. Los schemas Pydantic para request y response están en un archivo separado de los modelos ORM — nunca devuelvas un objeto ORM directamente desde un endpoint.
+- **Enrutamiento:** Todas las rutas de inventario deben registrarse bajo el prefijo `/inventory` usando un `APIRouter` dedicado.
+- **Contexto de negocio:** Revisa tu `CONTEXT.md` — los nombres de entidades, las restricciones de campos y las reglas de negocio son específicas de tu empresa.
 
-- [ ] Revisa cada handler de ruta y asegúrate de que las excepciones se capturen en el ámbito correcto — evita bloques `try/except` grandes que engullan todos los errores.
-- [ ] Devuelve respuestas HTTP de error apropiadas (`400`, `404`, `422`, `500`) con un cuerpo JSON limpio y estructurado — sin tracebacks de Python en crudo.
-- [ ] Asegúrate de que las respuestas de error no exponen datos sensibles (cadenas de conexión a base de datos, rutas internas, claves secretas).
-- [ ] Añade gestión de errores a todas las llamadas a APIs externas que se hagan desde el backend (por ejemplo, llamadas a un LLM o a un servicio de terceros).
+### ✅ Criterios de aceptación: 
+- Todos los endpoints funcionales bajo `/inventory`.
+- Relaciones FK aplicadas a nivel de base de datos.
+- Sin mutación directa de stock.
+- Ambas conexiones activas y usadas correctamente.
 
-## Scripts (Python)
+## 🌱 Cómo Empezar el Proyecto
 
-- [ ] Envuelve las operaciones de lectura/escritura de archivos y el parseo de CSV en bloques `try/except` con mensajes de error informativos impresos en `stderr`.
-- [ ] Asegúrate de que los scripts terminan con un código distinto de cero (`sys.exit(1)`) cuando ocurre un error crítico.
-- [ ] Añade comprobaciones defensivas para datos de entrada faltantes o malformados antes de que comience el procesamiento.
+Este hito extiende el servicio FastAPI de tu monorepo. No crearás un nuevo servicio — añadirás la capa de inventario sobre el existente.
 
-## General
+1. **Abre tu repositorio existente** (forkeado desde `https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo`).
+2. **Navega a `services/`** — tu aplicación FastAPI con auth TinyDB debería vivir ya aquí. Si no, detente y monta/termina auth primero.
+3. **Instala las nuevas dependencias:**
+   ```bash
+   uv add sqlmodel psycopg2-binary
+   ```
+4. **Configura el entorno:** Añade tu cadena de conexión de Supabase a `.env`. Deja intacta la configuración TinyDB de auth — no la modifiques.
+5. **Revisa tu contexto:** Lee tu `CONTEXT-company.md` antes de definir cualquier modelo — los nombres de entidades y las restricciones de campos están especificados allí.
 
-- [ ] Revisa el código base en busca de `console.error` o sentencias `print` que expongan información interna sensible y elimínalos o reemplázalos.
+### 🔗 Conexión con Supabase
 
-> ⚠️ **IMPORTANTE:** No introduzcas nuevas funcionalidades ni refactorices código que no esté relacionado con la gestión de errores. El alcance de este proyecto es estrictamente la resiliencia y la comunicación de errores del código existente.
+En el panel de Supabase (**Connect** → **Direct**), elige **Transaction pooler** como método de conexión y **URI** como tipo — luego copia esa cadena en `DATABASE_URL`.
 
+*(Nota visual: Configuración de conexión en Supabase: método Transaction pooler y tipo URI)*
 
-# ✅ Qué vamos a evaluar
+*(Nota visual: Cadena de conexión en Supabase: detalles del URI con Transaction pooler)*
 
-- [ ] Todas las operaciones asíncronas del frontend implementan el patrón de UI de tres estados (cargando / éxito / error).
-- [ ] Los mensajes de error mostrados al usuario son legibles e incluyen una llamada a la acción.
-- [ ] Los bloques `try/catch` y `try/except` están acotados a operaciones específicas, no envuelven funciones enteras.
-- [ ] Los bloques `finally` se usan correctamente para limpiar el estado de carga.
-- [ ] El `optional chaining` y los `fallbacks` se aplican donde corresponde para evitar errores de renderizado por valores `undefined`.
-- [ ] Las rutas del backend devuelven respuestas de error estructuradas y limpias con los códigos HTTP correctos.
-- [ ] Ninguna información sensible aparece en la salida de errores entregada al cliente.
-- [ ] Los scripts de Python gestionan errores de I/O y terminan con códigos de salida apropiados en caso de fallo.
+---
 
-> **Nota:** La evaluación se centra en la corrección y consistencia de los patrones de gestión de errores — no en si se añadieron nuevas funcionalidades.
+## 💻 Qué Debes Hacer
 
-## 📦 Cómo entregar
+### Configuración de bases de datos
+- [ ] Añade la cadena de conexión PostgreSQL de Supabase a `.env`. Nunca escribas credenciales directamente en el código.
+- [ ] En `database.py` (o equivalente), inicializa **ambas** conexiones de base de datos: el cliente TinyDB existente y el nuevo motor SQLModel apuntando a Supabase.
+- [ ] Crea una dependencia `get_db` que produzca una sesión SQLModel por petición mediante `Depends()`. No uses variables de sesión globales.
 
-Sube tu rama `feature/error-handling-audit` a GitHub y comparte la URL del pull request (o del repositorio) con tu instructor según las instrucciones de entrega de tu cohorte.
+### Modelos ORM — `models.py`
+- [ ] Define la entidad **equivalente a producto** de tu `CONTEXT.md` (p. ej. `Ingredient`, `SKU`, `Asset`, `MedicalSupply`) con `SQLModel, table=True`, con al menos: `id`, `name`, `sku` y cualquier campo específico de `CONTEXT.md`.
+- [ ] Define el modelo **equivalente a entrada** (p. ej. `IngredientEntry`, `StockEntry`) con: `id`, una FK a la entidad equivalente a producto (`ingredient_id` / `sku_id` / ... según `CONTEXT.md`), `quantity`, `created_at`, `user_uuid` (cadena — referencia al usuario de TinyDB; sin FK, sin replicación de tabla de usuarios), y cualquier otro campo que `CONTEXT.md` exija.
+- [ ] Define el modelo **equivalente a salida** (p. ej. `IngredientExit`, `StockExit`) con el mismo patrón de FK, más `quantity`, `created_at`, `user_uuid` y los campos que `CONTEXT.md` exija.
+- [ ] Llama a `SQLModel.metadata.create_all(engine)` al inicio de la aplicación para inicializar el esquema en Supabase.
+
+### Schemas Pydantic — `schemas.py`
+- [ ] Define schemas de request y response para las entidades equivalentes a producto, entrada y salida como modelos Pydantic independientes — separados de los modelos ORM. Usa los nombres de `CONTEXT.md`.
+- [ ] El schema de respuesta de la entidad equivalente a producto debe incluir un campo `current_stock` (calculado, no almacenado).
+- [ ] Los modelos ORM y los schemas Pydantic deben estar en **archivos separados**. Son clases distintas, aunque algunos campos coincidan.
+
+### Router de inventario — `routers/inventory.py`
+- [ ] Crea un `APIRouter` dedicado con `prefix="/inventory"` y regístralo en la aplicación FastAPI principal.
+- [ ] Implementa los siguientes endpoints dentro de este router:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/inventory/products` | Lista todos los productos con `current_stock` calculado |
+| `POST` | `/inventory/products` | Crea un producto (requiere autenticación) |
+| `GET` | `/inventory/products/{id}` | Obtiene un producto con su stock actual |
+| `POST` | `/inventory/orders/inbound` | Registra una orden de entrada (requiere autenticación) |
+| `POST` | `/inventory/orders/outbound` | Registra una orden de salida (requiere autenticación) |
+| `GET` | `/inventory/orders` | Lista todas las órdenes con datos del producto y `user_uuid` |
+
+> **Auth en GET:** las escrituras de producto y órdenes siempre requieren autenticación. Si los `GET` son públicos o autenticados lo define tu `CONTEXT.md` (p. ej. HealthCore exige acceso autenticado en las rutas de inventario).
+
+### Reglas de negocio
+- [ ] `current_stock` se calcula siempre como `SUMA(cantidades de entradas) - SUMA(cantidades de salidas)` para cada entidad equivalente a producto, **acotado por cualquier clave de partición que defina tu `CONTEXT.md`** (p. ej. warehouse). Nunca se almacena como una columna que pueda modificarse directamente.
+- [ ] Una entidad equivalente a producto comienza con stock cero al crearse y solo puede acumular stock a través de registros de entrada.
+- [ ] Cada endpoint de creación de órdenes requiere autenticación. El UUID del usuario autenticado (de TinyDB) debe almacenarse en el campo `user_uuid` de la orden.
+- [ ] Un registro de salida que resultaría en stock negativo (dentro del alcance que define `CONTEXT.md`) debe rechazarse **antes de persistir el registro**, devolviendo `HTTP 400` con un mensaje de error descriptivo.
+
+> [!IMPORTANT]
+> Los nombres de entidades, nombres de campos y valores específicos del dominio en tu implementación deben coincidir con lo especificado en tu `CONTEXT.md`. Una implementación genérica que ignore el contexto no será aceptada.
+
+### Datos semilla
+- [ ] Siembra las tablas de inventario con los registros mínimos listados en tu `CONTEXT.md` (equivalentes a producto, entradas y salidas) antes de la demo. El stock sembrado debe coincidir con neto entradas - salidas.
+
+---
+
+## ✅ Qué Vamos a Evaluar
+
+- [ ] Dos conexiones de base de datos están presentes y se usan correctamente: TinyDB para autenticación y consultas de usuario; Supabase (SQLModel) para todas las entidades de inventario.
+- [ ] Todos los endpoints de inventario están agrupados bajo `/inventory` mediante un `APIRouter` dedicado.
+- [ ] Los modelos ORM SQLModel declaran correctamente las relaciones FK: los modelos de entrada/salida referencian la entidad equivalente a producto nombrada en `CONTEXT.md` (no un `Product` genérico salvo que `CONTEXT.md` lo diga).
+- [ ] `current_stock` se calcula a partir de órdenes — ningún endpoint permite modificar directamente un campo de stock en la entidad equivalente a producto.
+- [ ] El cálculo de stock respeta el alcance de `CONTEXT.md` (global vs por partición / por warehouse cuando aplique).
+- [ ] Un registro de salida que supera el stock disponible (dentro de ese alcance) se rechaza con `HTTP 400` antes de que ocurra cualquier escritura.
+- [ ] Cada orden almacena el `user_uuid` del creador autenticado (obtenido de TinyDB).
+- [ ] Los modelos ORM (`models.py`) y los schemas Pydantic (`schemas.py`) están en archivos separados y son estructuralmente distintos — ningún endpoint devuelve un objeto SQLModel directamente.
+- [ ] La sesión SQLModel se inyecta por petición mediante `Depends()` — no existe ninguna sesión global en el código.
+- [ ] Todos los parámetros de conexión están en `.env`; `.env` aparece en `.gitignore`.
+- [ ] Los nombres de entidades y campos coinciden con la especificación del `CONTEXT.md` del estudiante.
+- [ ] Los datos semilla de `CONTEXT.md` están presentes; `GET /inventory/products` refleja el stock neto de esas semillas.
+
+---
+
+## 📦 Cómo Entregar
+
+1. Confirma y sube todos los cambios a tu fork.
+2. Verifica que `.env` está en `.gitignore` — nunca subas credenciales.
+3. Envía la URL de tu fork a través de la plataforma del estudiante.

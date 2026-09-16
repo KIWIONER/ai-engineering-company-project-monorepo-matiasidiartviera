@@ -4,7 +4,7 @@ from tinydb import Query as TinyQuery
 from datetime import datetime
 
 from services.api.models import SupplierCreate, SupplierResponse, SupplierUpdateRate, SupplierUpdateStatus
-from services.api.database import get_db
+from services.api.database import get_tinydb
 
 from fastapi import Depends
 from services.api.routes.auth import get_current_user
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 
 @router.post("", response_model=SupplierResponse, status_code=201)
 def create_supplier(supplier: SupplierCreate, current_user: dict = Depends(get_current_user)):
-    db = get_db()
+    db = get_tinydb()
     now = datetime.utcnow()
     supplier_dict = supplier.dict()
     supplier_dict["updated_at"] = now.isoformat()
@@ -30,7 +30,7 @@ def get_suppliers(
     category: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    db = get_db()
+    db = get_tinydb()
     SupplierQuery = TinyQuery()
     
     if country and category:
@@ -52,7 +52,7 @@ def get_suppliers(
 
 @router.get("/{id}", response_model=SupplierResponse)
 def get_supplier(id: int, current_user: dict = Depends(get_current_user)):
-    db = get_db()
+    db = get_tinydb()
     record = db.get(doc_id=id)
     if not record:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -62,7 +62,7 @@ def get_supplier(id: int, current_user: dict = Depends(get_current_user)):
 
 @router.patch("/{id}/rate", response_model=SupplierResponse)
 def update_supplier_rate(id: int, rate_update: SupplierUpdateRate, current_user: dict = Depends(get_current_user)):
-    db = get_db()
+    db = get_tinydb()
     record = db.get(doc_id=id)
     if not record:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -77,7 +77,7 @@ def update_supplier_rate(id: int, rate_update: SupplierUpdateRate, current_user:
 
 @router.patch("/{id}/status", response_model=SupplierResponse)
 def update_supplier_status(id: int, status_update: SupplierUpdateStatus, current_user: dict = Depends(get_current_user)):
-    db = get_db()
+    db = get_tinydb()
     record = db.get(doc_id=id)
     if not record:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -92,7 +92,7 @@ def update_supplier_status(id: int, status_update: SupplierUpdateStatus, current
 
 @router.delete("/{id}", status_code=204)
 def delete_supplier(id: int, current_user: dict = Depends(get_current_user)):
-    db = get_db()
+    db = get_tinydb()
     record = db.get(doc_id=id)
     if not record:
         raise HTTPException(status_code=404, detail="Supplier not found")

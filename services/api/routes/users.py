@@ -3,7 +3,7 @@ from typing import List
 from datetime import datetime
 from tinydb import Query
 from services.api.models import UserCreate, UserResponse
-from services.api.database import get_user_by_email, get_user_by_id, create_user_in_db, get_db
+from services.api.database import get_user_by_email, get_user_by_id, create_user_in_db, get_tinydb
 from passlib.hash import bcrypt
 from fastapi import Depends
 from services.api.routes.auth import get_current_user
@@ -41,7 +41,7 @@ def create_user(user:UserCreate):
 @router.get("/", response_model=List[UserResponse])
 def get_all_users(current_user: dict = Depends(get_current_user)):
     #TODO
-    db = get_db()
+    db = get_tinydb()
     users= db.table('users').all()
     profiles_table = db.table('profiles')
 
@@ -60,7 +60,7 @@ def get_user(user_id: str, current_user: dict = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    db = get_db()
+    db = get_tinydb()
     ProfileQuery = Query()
     prof = db.table('profiles').search(ProfileQuery.user_id == user_id)
     user['profile'] = prof[0] if prof else None
@@ -74,7 +74,7 @@ def delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    db = get_db()
+    db = get_tinydb()
     UserQuery = Query()
 
     db.table('users').remove(UserQuery.id == user_id)

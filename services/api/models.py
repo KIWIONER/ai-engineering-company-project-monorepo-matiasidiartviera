@@ -2,10 +2,6 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from enum import Enum
-from packages.shared.validation import (
-    IncidentStatus, IncidentOrigin, IncidentBranch, IncidentCategory,
-    IncidentBase, IncidentCreate, IncidentUpdateStatus, IncidentInDB, IncidentResponse
-)
 
 class SupplierStatus(str, Enum):
     active = "active"
@@ -85,65 +81,41 @@ class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
 
-# --- CANDIDATES MODELS ---
-class CandidateStatus(str, Enum):
-    PENDING = "PENDING"
-    IN_REVIEW = "IN_REVIEW"
-    ACCEPTED = "ACCEPTED"
-    REJECTED = "REJECTED"
 
-class CandidateStage(str, Enum):
-    SCREENING = "SCREENING"
-    INTERVIEW = "INTERVIEW"
-    TECHNICAL_TEST = "TECHNICAL_TEST"
-    OFFER = "OFFER"
-    HIRED = "HIRED"
+from sqlmodel import SQLModel, Field, Relationship
+from typing import Optional, List
+import datetime
 
-class CandidateNoteBase(BaseModel):
-    content: str = Field(..., min_length=1)
+class Asset(SQLModel, table=True):
+    __tablename__='assets'
 
-class CandidateNoteCreate(CandidateNoteBase):
-    pass
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    sku: str = Field(unique=True, index=True)
+    department: str = Field(index=True)
 
-class CandidateNoteResponse(CandidateNoteBase):
-    id: int
-    candidate_id: int
-    created_at: datetime
-    updated_at: datetime
+    # Relaciones para navegar fácilmente entre tablas
+    acquisitions: List['AssetAcquisition']= Relationship(back_populates='asset')
+    assignments: List['AssetAssignment']= Relationship(back_populates='asset')
 
-class CandidateBase(BaseModel):
-    name: str = Field(..., min_length=1)
-    email: str = Field(..., min_length=1)
-    phone: Optional[str] = None
-    position: str = Field(..., min_length=1)
-    linkedin: Optional[str] = None
-    resume_url: Optional[str] = None
-    years_of_experience: Optional[int] = None
-    status: CandidateStatus = CandidateStatus.PENDING
-    stage: CandidateStage = CandidateStage.SCREENING
-    score_ia: Optional[int] = Field(None, ge=0, le=100)
+class AssetAcquisition(SQLModel, table=True):
+    __tablename__='asset_acquisitions'
 
-class CandidateCreate(CandidateBase):
-    pass
+    id: Optional[int] = Field(default=None, primary_key=True)
+    asset_id: int= Field(foreign_key='assets.id')
+    quantity: int= Field(gt=0)
+    created_at: datetime.datetime= Field(default_factory=datetime.datetime.utcnow)
 
-class CandidateUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    position: Optional[str] = None
-    linkedin: Optional[str] = None
-    resume_url: Optional[str] = None
-    years_of_experience: Optional[int] = None
-    status: Optional[CandidateStatus] = None
-    stage: Optional[CandidateStage] = None
+    user_uuid: str= Field(index=True)
+    asset:Optional[Asset]= Relationship(back_populates='acquisitions')
 
-class CandidatePatch(BaseModel):
-    status: Optional[CandidateStatus] = None
-    stage: Optional[CandidateStage] = None
+class AssetAssignment(SQLModel, table=True):
+    __tablename__='asset_assignments'
 
-class CandidateResponse(CandidateBase):
-    id: int
-    applied_at: datetime
-    created_at: datetime
-    updated_at: datetime
-    notes: Optional[List[CandidateNoteResponse]] = None
+    id: Optional[int] = Field(default=None, primary_key=True)
+    asset_id: int= Field(foreign_key='assets.id')
+    quantity: int= Field(gt=0)
+    created_at: datetime.datetime= Field(default_factory=datetime.datetime.utcnow)
+
+    user_uuid: str= Field(index=True)
+    asset:Optional[Asset]= Relationship(back_populates='assignments')
