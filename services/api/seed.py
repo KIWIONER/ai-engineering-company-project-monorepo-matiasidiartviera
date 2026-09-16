@@ -5,7 +5,7 @@ from datetime import datetime
 # Make sure we can import from the local package when running from anywhere
 sys.path.append(os.path.dirname(__file__))
 
-from database import get_db
+from database import get_tinydb
 
 SEED_DATA = [
     {
@@ -32,7 +32,7 @@ SEED_DATA = [
 ]
 
 def run_seed():
-    db = get_db()
+    db = get_tinydb()
     if len(db) > 0:
         print("Database already contains records. Seeding skipped.")
         return

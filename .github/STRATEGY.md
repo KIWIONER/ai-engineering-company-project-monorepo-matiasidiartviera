@@ -1,112 +1,140 @@
-# README
+# Hito — Backend: Gestión de Inventario con ORM y Doble Base de Datos
 
-## La Pieza Que Faltaba: Flujo de Restablecimiento de Contraseña
+> **Antes de empezar:** Lee tu `CONTEXT-company.md` antes de escribir ningún código — define las entidades específicas, los nombres de campos y las restricciones de negocio para tu implementación.
 
-### 🎯 Tu reto
-**📌 Estás construyendo sobre tu copia del monorepo de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.**
+## 🎯 Tu reto
 
-El sistema de autenticación está funcionando. Los usuarios pueden registrarse, iniciar sesión y gestionar su perfil.
+📌 **Estás construyendo sobre tu copia del monorepo de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.**
 
-¿Pero qué ocurre cuando olvidan su contraseña — o necesitan cambiarla estando conectados?
+Ya has construido — o se espera que tengas — la API y la capa de autenticación bajo `services/`. Si FastAPI + auth TinyDB (`User` / `get_current_user`) aún no está en tu monorepo, completa los proyectos de autenticación (o monta esa capa) antes de empezar este hito: aquí extiendes ese servicio; no creas uno nuevo desde cero.
 
-Ahora mismo, un usuario que olvida su contraseña no tiene forma de recuperar su cuenta. Los usuarios con sesión iniciada no tienen un formulario para actualizar su contraseña. En cualquier sistema en producción, ambos flujos son requisitos básicos de seguridad. Tu plataforma no tiene ningún mecanismo para ninguno de los dos.
+Ahora el equipo de operaciones ha enviado una RFP a la unidad tecnológica: la empresa necesita un sistema centralizado de gestión de inventario antes de la próxima revisión operativa.
 
-Tu tech lead ha abierto el ticket:
+Tu tech lead ha convertido esa RFP en una decisión arquitectónica que condiciona todo lo que construirás aquí: la autenticación permanece en TinyDB (búsquedas rápidas, locales y basadas en documentos), y todos los datos de negocio — productos, órdenes de entrada y órdenes de salida — se mueven a Supabase (una base de datos PostgreSQL alojada en la nube). Tu aplicación FastAPI mantendrá dos conexiones de base de datos simultáneas y deberá usarlas de forma deliberada: cada petición llega al almacén correcto.
 
-#### AUTH-03 — Recuperación y cambio de contraseña
-La plataforma necesita dos mecanismos de contraseña — restablecimiento cuando el usuario la olvidó, y cambio estando conectado. Esto cubre tanto la API como el frontend:
+Esto no es solo un ejercicio de persistencia. El equipo de operaciones incluyó una restricción no negociable en el brief:
 
-**Backend:**
-- `POST /auth/forgot-password` — recibe un email, valida que el usuario existe, genera un token de restablecimiento firmado de corta duración y envía un enlace de restablecimiento a la dirección del usuario.
-- `POST /auth/reset-password` — recibe el token de restablecimiento y una nueva contraseña, valida el token (firma + expiración), hashea la nueva contraseña y actualiza el registro del usuario. El token debe quedar invalidado tras su uso.
-- `POST /auth/change-password` — endpoint autenticado. Recibe la contraseña actual y una nueva, verifica la actual, hashea la nueva y actualiza el registro del usuario.
+> *"Los niveles de stock no se pueden modificar directamente. La única forma de cambiar el inventario es registrando una orden — ya sea una orden de entrada que añade stock, o una orden de salida que lo reduce. Cada orden debe ser trazable al usuario que la creó."*
 
-**Frontend:**
-- `/forgot-password` — formulario donde el usuario introduce su email. Siempre muestra un mensaje de confirmación tras el envío, independientemente de si la dirección existe, para evitar la enumeración de usuarios.
-- `/reset-password` — formulario donde el usuario establece una nueva contraseña. Lee el token de restablecimiento del query string de la URL y lo envía a la API junto con la nueva contraseña. Si tiene éxito, redirige a `/login`.
-- `/account/change-password` — formulario con la contraseña actual, la nueva contraseña y la confirmación. Valida que la nueva contraseña y la confirmación coinciden antes de llamar a la API.
+Tu trabajo es hacer cumplir esa regla a nivel de API y de modelos, usando un ORM para traducir clases Python en tablas relacionales en Supabase. Todos los endpoints de inventario deben agruparse bajo el prefijo de router `/inventory`.
 
-Para el envío de correos, elige uno de los siguientes servicios e intégralo:
-- **Resend**
-- **SendGrid (Twilio)**
+### ¿Qué es un ORM y por qué importa aquí?
 
-> **¿Por qué solo estos dos?** Para este ejercicio, Resend y SendGrid son las opciones prácticas: puedes completar el flujo en desarrollo sin un dominio propio (Resend con su remitente de onboarding; SendGrid en trial/sandbox o con un remitente único verificado — revisa su documentación actual). Alternativas como Mailgun o MailerSend suelen exigir verificar tu propio dominio en DNS antes de enviar a destinatarios arbitrarios, lo que bloquea a muchos estudiantes durante el proyecto.
+Un ORM (Object-Relational Mapper) es una capa de traducción: una clase Python se convierte en una tabla, una instancia en una fila y un atributo en una columna. No reemplaza conocer SQL — entender lo que el ORM genera por debajo es lo que permite usarlo correctamente y depurar errores cuando algo falla. En este hito usarás **SQLModel**, que combina el motor ORM de SQLAlchemy con el sistema de tipos de Pydantic. *No uses SQLAlchemy directamente.*
 
-Ambos ofrecen un tier gratuito suficiente para desarrollo. Las API keys deben almacenarse en variables de entorno — **nunca en el código fuente**.
+Antes de escribir cualquier consulta, debes conocer el **problema N+1**. Si cargas una lista de órdenes y después accedes a los datos del producto de cada una dentro de un bucle, generas una consulta adicional por elemento — degradando el rendimiento de forma silenciosa. Estructura tus consultas para cargar los datos relacionados desde el inicio, no en el momento del acceso.
 
 ---
 
-### Conocimiento complementario: cómo funciona un flujo de restablecimiento de contraseña
-El flujo tiene tres pasos y dos momentos separados en el tiempo:
+## Brief de tu tech lead
 
-1. **Solicitud** — el usuario envía su email. El servidor genera un token de restablecimiento (un JWT firmado o una cadena aleatoria almacenada en la base de datos), construye una URL de restablecimiento que contiene ese token (`/reset-password?token=<token>`) y la envía al email del usuario mediante un servicio de correo transaccional.
-2. **Restablecimiento** — el usuario hace clic en el enlace, llega a la página `/reset-password`, introduce una nueva contraseña y envía el formulario. El frontend envía el token (leído de la URL) y la nueva contraseña a la API. El servidor valida el token (firma, expiración y que no se haya usado ya), actualiza la contraseña e invalida el token para que no pueda reutilizarse.
-3. **Confirmación** — el usuario es redirigido a `/login` y puede iniciar sesión con la nueva contraseña.
+**De:** Tech Lead  
+**Asunto:** Hito — arquitectura de doble base de datos + ORM de inventario
 
-> **¿Por qué mostrar siempre un mensaje de confirmación?** Si el formulario muestra "email no encontrado" para direcciones que no existen, un atacante puede usar eso para enumerar qué emails están registrados. Responder siempre con "si esa dirección está en nuestro sistema, recibirás un enlace" lo evita.
+El PRD está listo. Esto es lo que debe hacer el sistema:
 
-**Expiración y reutilización:** Un token de restablecimiento debe durar 15–60 minutos y quedar inutilizable tras un reset exitoso. Un JWT con solo un claim `exp` no se puede invalidar después de usarlo. Persiste estado en el servidor: una fila con el token hasheado, un registro de tokens usados, o un `password_changed_at` que rechace tokens emitidos antes de ese momento. Codificar la expiración en el payload del JWT no basta.
+- **Doble conexión:** La aplicación FastAPI conecta a dos bases de datos simultáneamente: TinyDB (existente, para usuarios y autenticación) y Supabase (nueva, para inventario y órdenes).
+- **Gestión de stock:** Los productos y el stock viven en Supabase. El stock no debe ser una columna editable directamente — siempre se deriva del historial de órdenes.
+- **Órdenes cruzadas:** Las órdenes de entrada incrementan el stock; las órdenes de salida lo reducen. Ambas se almacenan en Supabase y referencian el UUID del usuario de TinyDB — ninguna tabla de usuarios se replica en Supabase.
+- **Modelos y Schemas:** Los modelos ORM usan **SQLModel**. Los schemas Pydantic para request y response están en un archivo separado de los modelos ORM — nunca devuelvas un objeto ORM directamente desde un endpoint.
+- **Enrutamiento:** Todas las rutas de inventario deben registrarse bajo el prefijo `/inventory` usando un `APIRouter` dedicado.
+- **Contexto de negocio:** Revisa tu `CONTEXT.md` — los nombres de entidades, las restricciones de campos y las reglas de negocio son específicas de tu empresa.
 
----
+### ✅ Criterios de aceptación: 
+- Todos los endpoints funcionales bajo `/inventory`.
+- Relaciones FK aplicadas a nivel de base de datos.
+- Sin mutación directa de stock.
+- Ambas conexiones activas y usadas correctamente.
 
-### 🌱 Cómo Iniciar el Proyecto
-Este proyecto continúa dentro de tu monorepo existente. Abre una nueva rama: 
+## 🌱 Cómo Empezar el Proyecto
 
-`git switch -c feature/password-reset`
+Este hito extiende el servicio FastAPI de tu monorepo. No crearás un nuevo servicio — añadirás la capa de inventario sobre el existente.
 
-Antes de empezar, regístrate en uno de los servicios de email listados arriba y obtén una API key. Guárdala en tu archivo `.env`. Asegúrate de que `.env` está en tu `.gitignore` — **nunca hagas commit de API keys.**
+1. **Abre tu repositorio existente** (forkeado desde `https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo`).
+2. **Navega a `services/`** — tu aplicación FastAPI con auth TinyDB debería vivir ya aquí. Si no, detente y monta/termina auth primero.
+3. **Instala las nuevas dependencias:**
+   ```bash
+   uv add sqlmodel psycopg2-binary
+   ```
+4. **Configura el entorno:** Añade tu cadena de conexión de Supabase a `.env`. Deja intacta la configuración TinyDB de auth — no la modifiques.
+5. **Revisa tu contexto:** Lee tu `CONTEXT-company.md` antes de definir cualquier modelo — los nombres de entidades y las restricciones de campos están especificados allí.
 
+### 🔗 Conexión con Supabase
 
-# 💻 Qué Debes Hacer
+En el panel de Supabase (**Connect** → **Direct**), elige **Transaction pooler** como método de conexión y **URI** como tipo — luego copia esa cadena en `DATABASE_URL`.
 
-## Backend
+*(Nota visual: Configuración de conexión en Supabase: método Transaction pooler y tipo URI)*
 
-- [ ] `POST /auth/forgot-password` — acepta `{ email }`. Si el usuario existe, genera un token de restablecimiento con expiración corta (15–60 minutos) y envía un email con el enlace de restablecimiento. Devuelve siempre `200` independientemente de si el email fue encontrado.
-- [ ] `POST /auth/reset-password` — acepta `{ token, new_password }`. Valida el token (firma, expiración y que no se haya usado ya). Si es válido, hashea la nueva contraseña, actualiza el registro del usuario e invalida el token. Devuelve `400` para tokens inválidos, expirados o ya utilizados.
-- [ ] `POST /auth/change-password` — acepta `{ current_password, new_password }`. Requiere un token de sesión válido en la cabecera `Authorization`. Verífica la contraseña actual antes de actualizar. Devuelve `400` si la contraseña actual es incorrecta.
-- [ ] Integra un servicio de correo transaccional para enviar el email de restablecimiento. El email debe incluir el enlace de restablecimiento y ser legible en móvil.
-- [ ] Almacena la API key del servicio de email en una variable de entorno. Documenta el nombre de la variable en tu `README` o en un `.env.example`.
-
-## Frontend
-
-- [ ] `/forgot-password` — formulario con campo de email. Al enviarlo, llama a `POST /auth/forgot-password` y muestra un mensaje de confirmación ("Si esa dirección está registrada, recibirás un enlace en breve"). El formulario debe desactivarse tras el envío para evitar peticiones duplicadas.
-- [ ] `/reset-password` — formulario de nueva contraseña con campo de confirmación. Lee el `token` del query string de la URL. Al enviarlo, llama a `POST /auth/reset-password`. Si tiene éxito, redirige a `/login` con un mensaje de éxito. Si falla (token expirado o inválido), muestra un error claro y un enlace de vuelta a `/forgot-password`.
-- [ ] `/account/change-password` — formulario con la contraseña actual, la nueva contraseña y la confirmación. Valida que la nueva contraseña y la confirmación coinciden antes de llamar a la API.
-- [ ] Añade un enlace "¿Olvidaste tu contraseña?" en la página `/login` que apunte a `/forgot-password`.
-
-## Seguridad
-
-- [ ] Los tokens de restablecimiento deben expirar e invalidarse tras su uso — un token no puede usarse dos veces.
-- [ ] El endpoint `/forgot-password` debe devolver siempre `200`, nunca revelar si un email está registrado.
-- [ ] Las API keys no deben aparecer nunca en el código fuente — usa exclusivamente variables de entorno.
-
-# 🚀 Para ir más lejos (opcional)
-
-No se evalúan, pero son extensiones válidas si el tiempo lo permite:
-
-- **Plantilla de email en HTML** — envía un email con estilos en lugar de un enlace en texto plano.
-- **Rate limiting** — limita el número de solicitudes de restablecimiento por dirección de email por hora para prevenir abusos.
-- **Registro de auditoría** — registra cada evento de restablecimiento de contraseña (timestamp, dirección IP) en la base de datos.
+*(Nota visual: Cadena de conexión en Supabase: detalles del URI con Transaction pooler)*
 
 ---
 
-# ✅ Qué Vamos a Evaluar
+## 💻 Qué Debes Hacer
 
-- [ ] `POST /auth/forgot-password` envía un email real con el enlace de restablecimiento cuando se llama con una dirección registrada.
-- [ ] `POST /auth/forgot-password` devuelve `200` incluso cuando la dirección no está registrada — no se filtra información.
-- [ ] El token de restablecimiento expira tras la ventana configurada y no puede usarse después de expirar.
-- [ ] `POST /auth/reset-password` actualiza la contraseña e invalida el token en caso de éxito.
-- [ ] `POST /auth/reset-password` devuelve `400` para tokens expirados o ya utilizados.
-- [ ] `/forgot-password` muestra un mensaje de confirmación tras el envío independientemente del resultado.
-- [ ] `/reset-password` lee el token de la URL, envía el formulario y redirige a `/login` en caso de éxito.
-- [ ] `/reset-password` muestra un error claro con un enlace de vuelta a `/forgot-password` cuando el token es inválido o ha expirado.
-- [ ] La página `/login` tiene un enlace visible a "¿Olvidaste tu contraseña?".
-- [ ] `/account/change-password` valida que la nueva contraseña y la confirmación coinciden, llama a la API y muestra feedback de éxito o error.
-- [ ] `POST /auth/change-password` rechaza contraseñas actuales incorrectas con `400`.
-- [ ] Ninguna API key está en el código fuente — todos los secretos se cargan desde variables de entorno.
+### Configuración de bases de datos
+- [ ] Añade la cadena de conexión PostgreSQL de Supabase a `.env`. Nunca escribas credenciales directamente en el código.
+- [ ] En `database.py` (o equivalente), inicializa **ambas** conexiones de base de datos: el cliente TinyDB existente y el nuevo motor SQLModel apuntando a Supabase.
+- [ ] Crea una dependencia `get_db` que produzca una sesión SQLModel por petición mediante `Depends()`. No uses variables de sesión globales.
+
+### Modelos ORM — `models.py`
+- [ ] Define la entidad **equivalente a producto** de tu `CONTEXT.md` (p. ej. `Ingredient`, `SKU`, `Asset`, `MedicalSupply`) con `SQLModel, table=True`, con al menos: `id`, `name`, `sku` y cualquier campo específico de `CONTEXT.md`.
+- [ ] Define el modelo **equivalente a entrada** (p. ej. `IngredientEntry`, `StockEntry`) con: `id`, una FK a la entidad equivalente a producto (`ingredient_id` / `sku_id` / ... según `CONTEXT.md`), `quantity`, `created_at`, `user_uuid` (cadena — referencia al usuario de TinyDB; sin FK, sin replicación de tabla de usuarios), y cualquier otro campo que `CONTEXT.md` exija.
+- [ ] Define el modelo **equivalente a salida** (p. ej. `IngredientExit`, `StockExit`) con el mismo patrón de FK, más `quantity`, `created_at`, `user_uuid` y los campos que `CONTEXT.md` exija.
+- [ ] Llama a `SQLModel.metadata.create_all(engine)` al inicio de la aplicación para inicializar el esquema en Supabase.
+
+### Schemas Pydantic — `schemas.py`
+- [ ] Define schemas de request y response para las entidades equivalentes a producto, entrada y salida como modelos Pydantic independientes — separados de los modelos ORM. Usa los nombres de `CONTEXT.md`.
+- [ ] El schema de respuesta de la entidad equivalente a producto debe incluir un campo `current_stock` (calculado, no almacenado).
+- [ ] Los modelos ORM y los schemas Pydantic deben estar en **archivos separados**. Son clases distintas, aunque algunos campos coincidan.
+
+### Router de inventario — `routers/inventory.py`
+- [ ] Crea un `APIRouter` dedicado con `prefix="/inventory"` y regístralo en la aplicación FastAPI principal.
+- [ ] Implementa los siguientes endpoints dentro de este router:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/inventory/products` | Lista todos los productos con `current_stock` calculado |
+| `POST` | `/inventory/products` | Crea un producto (requiere autenticación) |
+| `GET` | `/inventory/products/{id}` | Obtiene un producto con su stock actual |
+| `POST` | `/inventory/orders/inbound` | Registra una orden de entrada (requiere autenticación) |
+| `POST` | `/inventory/orders/outbound` | Registra una orden de salida (requiere autenticación) |
+| `GET` | `/inventory/orders` | Lista todas las órdenes con datos del producto y `user_uuid` |
+
+> **Auth en GET:** las escrituras de producto y órdenes siempre requieren autenticación. Si los `GET` son públicos o autenticados lo define tu `CONTEXT.md` (p. ej. HealthCore exige acceso autenticado en las rutas de inventario).
+
+### Reglas de negocio
+- [ ] `current_stock` se calcula siempre como `SUMA(cantidades de entradas) - SUMA(cantidades de salidas)` para cada entidad equivalente a producto, **acotado por cualquier clave de partición que defina tu `CONTEXT.md`** (p. ej. warehouse). Nunca se almacena como una columna que pueda modificarse directamente.
+- [ ] Una entidad equivalente a producto comienza con stock cero al crearse y solo puede acumular stock a través de registros de entrada.
+- [ ] Cada endpoint de creación de órdenes requiere autenticación. El UUID del usuario autenticado (de TinyDB) debe almacenarse en el campo `user_uuid` de la orden.
+- [ ] Un registro de salida que resultaría en stock negativo (dentro del alcance que define `CONTEXT.md`) debe rechazarse **antes de persistir el registro**, devolviendo `HTTP 400` con un mensaje de error descriptivo.
+
+> [!IMPORTANT]
+> Los nombres de entidades, nombres de campos y valores específicos del dominio en tu implementación deben coincidir con lo especificado en tu `CONTEXT.md`. Una implementación genérica que ignore el contexto no será aceptada.
+
+### Datos semilla
+- [ ] Siembra las tablas de inventario con los registros mínimos listados en tu `CONTEXT.md` (equivalentes a producto, entradas y salidas) antes de la demo. El stock sembrado debe coincidir con neto entradas - salidas.
 
 ---
 
-# 📦 Cómo Entregar
+## ✅ Qué Vamos a Evaluar
 
-Sube tu rama y abre un pull request contra `main` en tu monorepo. La descripción del PR debe incluir: qué servicio de email elegiste, el nombre de la variable de entorno necesaria para ejecutar la feature y confirmación de que probaste el flujo completo de extremo a extremo.
+- [ ] Dos conexiones de base de datos están presentes y se usan correctamente: TinyDB para autenticación y consultas de usuario; Supabase (SQLModel) para todas las entidades de inventario.
+- [ ] Todos los endpoints de inventario están agrupados bajo `/inventory` mediante un `APIRouter` dedicado.
+- [ ] Los modelos ORM SQLModel declaran correctamente las relaciones FK: los modelos de entrada/salida referencian la entidad equivalente a producto nombrada en `CONTEXT.md` (no un `Product` genérico salvo que `CONTEXT.md` lo diga).
+- [ ] `current_stock` se calcula a partir de órdenes — ningún endpoint permite modificar directamente un campo de stock en la entidad equivalente a producto.
+- [ ] El cálculo de stock respeta el alcance de `CONTEXT.md` (global vs por partición / por warehouse cuando aplique).
+- [ ] Un registro de salida que supera el stock disponible (dentro de ese alcance) se rechaza con `HTTP 400` antes de que ocurra cualquier escritura.
+- [ ] Cada orden almacena el `user_uuid` del creador autenticado (obtenido de TinyDB).
+- [ ] Los modelos ORM (`models.py`) y los schemas Pydantic (`schemas.py`) están en archivos separados y son estructuralmente distintos — ningún endpoint devuelve un objeto SQLModel directamente.
+- [ ] La sesión SQLModel se inyecta por petición mediante `Depends()` — no existe ninguna sesión global en el código.
+- [ ] Todos los parámetros de conexión están en `.env`; `.env` aparece en `.gitignore`.
+- [ ] Los nombres de entidades y campos coinciden con la especificación del `CONTEXT.md` del estudiante.
+- [ ] Los datos semilla de `CONTEXT.md` están presentes; `GET /inventory/products` refleja el stock neto de esas semillas.
+
+---
+
+## 📦 Cómo Entregar
+
+1. Confirma y sube todos los cambios a tu fork.
+2. Verifica que `.env` está en `.gitignore` — nunca subas credenciales.
+3. Envía la URL de tu fork a través de la plataforma del estudiante.
