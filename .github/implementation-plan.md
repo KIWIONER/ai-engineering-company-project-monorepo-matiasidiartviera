@@ -1,48 +1,50 @@
-# Plan de Implementación: Recuperación y Cambio de Contraseña (AUTH-03)
+# Implementation Plan: Gestión de Inventario (Activos de Nexova)
 
-De acuerdo con el documento `STRATEGY.md` y aplicando el protocolo de la skill `code-refinement-suite`, la implementación de Flujos de Recuperación y Cambio de Contraseña (con integración de email y tokens criptográficos) se clasifica como de **Alta Complejidad (Nivel 3)**.
+## Objetivo
+Implementar una API de gestión de inventario con arquitectura de doble base de datos (TinyDB para Auth, Supabase para Inventario) para gestionar los activos físicos y digitales de los empleados de **Nexova Solutions**. 
 
-El ciclo de desarrollo se dividirá en las siguientes fases interactivas. Yo te guiaré paso a paso por el chat actuando como tu tutor, y tú escribirás el código.
+## Entidades (Adaptación a Nexova Solutions)
+Dado que Nexova es una consultora de recursos humanos y outsourcing, el "inventario" más crítico a gestionar son los **Activos Corporativos** (licencias de software, equipos para agentes de soporte, etc.).
 
-## 🏛️ Fase 1: Arquitectura y Diseño (`PACK_ARCHITECT` & `PACK_PLANNER`)
-**Objetivo:** Diseñar el modelo de datos para los tokens de restablecimiento y la integración del servicio de email.
-1. **Almacenamiento de Tokens:** Crearemos una tabla o archivo en TinyDB (`reset_tokens_db.json`) para guardar los tokens con su `email` asociado, `token` hasheado, `expires_at` y `used` (booleano).
-2. **Servicio de Email:** Diseñar un módulo utilitario en FastAPI para enviar correos usando la API oficial del proveedor elegido, manejando los secretos a través de `python-dotenv`.
+- **Asset (Equivalente a Producto):** Representa un activo de la empresa (ej. Licencia de HubSpot, Laptop, Headset). 
+  - Campos: `id`, `name`, `sku`, `department` (clave de partición definida en el contexto, ej. "Ventas", "Soporte al Cliente").
+- **AssetAcquisition (Orden de Entrada):** Registro de compra o alta de nuevos activos.
+- **AssetAssignment (Orden de Salida):** Registro de entrega de un activo a un empleado o departamento.
 
-## 💻 Fase 2: Desarrollo del Backend (`PACK_CODER` - Parte 1)
-**Objetivo:** Construir los endpoints seguros en FastAPI.
-- `POST /auth/forgot-password`: Verificar email (silenciosamente), generar token seguro (ej. `secrets.token_urlsafe()`), guardarlo en TinyDB y enviar el correo con el enlace. Siempre retorna 200.
-- `POST /auth/reset-password`: Validar que el token existe, no está caducado y no se ha usado. Actualizar la contraseña del usuario y marcar el token como `used: true`.
-- `POST /auth/change-password`: (Ruta protegida) Validar `current_password` y actualizar a `new_password`.
+## Pasos de Implementación
 
-## 💻 Fase 3: Formularios del Frontend (`PACK_CODER` - Parte 2)
-**Objetivo:** Construir la interfaz de usuario en Next.js.
-- Construir la vista `/forgot-password` y añadir enlace desde `/login`.
-- Construir la vista `/reset-password` leyendo el parámetro `?token=...` de la URL. Manejar errores si el token expiró.
-- Construir la vista `/account/change-password` validando que "nueva contraseña" y "confirmar nueva contraseña" coincidan antes de enviarlo.
+### Paso 1: Configuración de Bases de Datos (`.env` y `database.py`)
+- **.env:** Agregar cadena de conexión de Supabase (Transaction Pooler, tipo URI). Asegurar que está en `.gitignore`.
+- **database.py:** Inicializar el motor `SQLModel` apuntando a Supabase, manteniendo el cliente TinyDB.
+- **Inyección:** Crear la dependencia `get_db` usando `Depends()` para inyectar la sesión SQLModel en cada request. *Prohibido usar sesiones globales.*
 
-## 🔎 Fase 4: Verificación y Auditoría (`PACK_AUDITOR`)
-**Objetivo:** Pruebas E2E de seguridad y Red Teaming.
-- **Red Teaming (Anti-Enumeración):** Intentar recuperar la contraseña de un correo inexistente y verificar que la API devuelve 200 sin revelar información.
-- **Auditoría de Expiración:** Intentar usar un token de restablecimiento dos veces o un token modificado para asegurar que es rechazado con un 400.
-- **Flujo E2E:** Solicitar correo -> copiar token de la terminal/email -> restablecer -> Iniciar sesión con la nueva clave.
+### Paso 2: Modelos ORM (`models.py`)
+- Crear el modelo `Asset` (`table=True`) con los campos definidos.
+- Crear el modelo `AssetAcquisition` con `id`, `asset_id` (FK a Asset), `quantity`, `created_at`, y `user_uuid` (string, obtenida de TinyDB).
+- Crear el modelo `AssetAssignment` con `id`, `asset_id` (FK a Asset), `quantity`, `created_at`, y `user_uuid`.
+- Invocar `SQLModel.metadata.create_all(engine)` al inicio del ciclo de vida de la app (Lifespan o equivalente).
 
----
+### Paso 3: Schemas Pydantic (`schemas.py`)
+- Definir esquemas independientes para request y response (ej. `AssetCreate`, `AssetRead`, `AssetAcquisitionCreate`, etc.).
+- Incluir obligatoriamente el campo calculado `current_stock` en el esquema `AssetRead`.
+- Asegurar que estos archivos estén físicamente separados de `models.py`.
 
-## Open Questions / Decisiones Requeridas
+### Paso 4: Router y Endpoints (`routers/inventory.py`)
+- Registrar `APIRouter(prefix="/inventory")`.
+- **`GET /inventory/products`**: Retorna lista de `Asset`. El `current_stock` se calcula dinámicamente sumando adquisiciones y restando asignaciones.
+- **`POST /inventory/products`**: Crea un `Asset`. *Requiere autenticación.*
+- **`GET /inventory/products/{id}`**: Obtiene un `Asset` específico con su stock.
+- **`POST /inventory/orders/inbound`**: Registra un `AssetAcquisition`. *Requiere autenticación (guarda el user_uuid).*
+- **`POST /inventory/orders/outbound`**: Registra un `AssetAssignment`. *Requiere autenticación.* **Regla estricta:** Antes de persistir, debe validar que `quantity` no supere el stock actual en ese `department`. Si lo supera, devuelve `HTTP 400`.
+- **`GET /inventory/orders`**: Lista todas las órdenes (inbound y outbound) con datos relacionales.
 
-> **Selección de Proveedor de Email**  
-> Para enviar los enlaces de recuperación, `STRATEGY.md` requiere integrar **Resend** o **SendGrid**. ¿Con cuál de los dos prefieres que trabajemos? Te recomiendo Resend porque es mucho más fácil de configurar para entornos de desarrollo.
-
-> **Persistencia de Tokens**  
-> Almacenaremos los tokens en TinyDB (`reset_tokens_db.json`) en lugar de la memoria del servidor para que no se pierdan si reinicias el servidor FastAPI. ¿Estás de acuerdo con este enfoque?
+### Paso 5: Datos Semilla y Pruebas
+- Crear un script semilla que introduzca activos reales de Nexova (ej. Licencias de software para el equipo de Ventas, Headsets para los 30 agentes de Soporte).
+- Validar rigurosamente que una orden de salida mayor al stock lance HTTP 400.
 
 ---
 
 ## ⚙️ Métodos Aplicados (Code Refinement Suite)
-Para garantizar la calidad y seguridad de esta implementación (clasificada como Nivel 3), aplicaremos conceptualmente las siguientes metodologías de nuestra suite:
-
-- **PACK 1 (ARCHITECT):** Aplicamos el criterio de *Sec Specialist* para definir que los tokens deben persistirse (TinyDB) con un booleano de `used` y un `expires_at`, rechazando el uso de un simple JWT sin estado que no se pueda revocar fácilmente.
-- **PACK 2 (PLANNER):** Se estructuró este plan aislando las responsabilidades en Backend (API/Email) y Frontend (UI/Validación).
-- **PACK 3 (CODER):** Durante el desarrollo aplicaremos simulaciones *TDD*, verificando paso a paso cada endpoint a través de la terminal antes de conectarlo a la UI.
-- **PACK 4 (AUDITOR):** Al finalizar, aplicaremos tácticas de *Red Teaming* para intentar enumerar usuarios o forzar tokens caducados, garantizando la inviolabilidad del sistema.
+- **Step-Back Prompting / Abstracción (PACK PLANNER):** Se analizó primero el contexto general de Nexova Solutions para determinar la entidad de inventario más lógica (Activos Corporativos) alejándonos de un modelo retail genérico.
+- **Self-Refinement Loop (PACK PLANNER):** El plan fue estructurado asegurando el cumplimiento estricto de los "criterios de evaluación" de `STRATEGY.md` (separación de schemas/models, stock inmutable, Depends, rechazo HTTP 400).
+- **Simulación de Seguridad (PACK AUDITOR / PRE-PLAN):** Se planificó explícitamente el control de stock negativo previo a la escritura en DB para prevenir condiciones de carrera lógicas en las salidas de inventario.
