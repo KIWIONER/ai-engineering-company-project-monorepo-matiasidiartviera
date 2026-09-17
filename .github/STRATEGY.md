@@ -1,140 +1,118 @@
-# Hito — Backend: Gestión de Inventario con ORM y Doble Base de Datos
+# Hito 5 — Backoffice: Interfaz de Gestión de Inventario
 
-> **Antes de empezar:** Lee tu `CONTEXT-company.md` antes de escribir ningún código — define las entidades específicas, los nombres de campos y las restricciones de negocio para tu implementación.
+> **Antes de empezar:** Lee tu `CONTEXT-company.md` antes de escribir ningún componente — define los nombres de entidades, etiquetas de campos, restricciones de negocio y vocabulario de dominio que deben aparecer en la interfaz.
 
 ## 🎯 Tu reto
 
 📌 **Estás construyendo sobre tu copia del monorepo de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.**
 
-Ya has construido — o se espera que tengas — la API y la capa de autenticación bajo `services/`. Si FastAPI + auth TinyDB (`User` / `get_current_user`) aún no está en tu monorepo, completa los proyectos de autenticación (o monta esa capa) antes de empezar este hito: aquí extiendes ese servicio; no creas uno nuevo desde cero.
+El equipo de backend completó la API de inventario e hizo el handoff al equipo de producto: todos los endpoints `/inventory` están activos, autenticados y documentados. Ahora el responsable de operaciones ha enviado un brief a la unidad tecnológica: el personal que gestiona el stock a diario necesita una interfaz funcional dentro del backoffice. Mientras no la haya, la API existe pero nadie puede usarla sin un cliente REST.
 
-Ahora el equipo de operaciones ha enviado una RFP a la unidad tecnológica: la empresa necesita un sistema centralizado de gestión de inventario antes de la próxima revisión operativa.
+Tu trabajo es construir la sección de inventario del backoffice: un conjunto de vistas que permitan al personal autenticado consultar el stock disponible, registrar entregas, registrar consumos o salidas y revisar el historial completo de órdenes — todo comunicándose con la API construida en el proyecto de backend.
 
-Tu tech lead ha convertido esa RFP en una decisión arquitectónica que condiciona todo lo que construirás aquí: la autenticación permanece en TinyDB (búsquedas rápidas, locales y basadas en documentos), y todos los datos de negocio — productos, órdenes de entrada y órdenes de salida — se mueven a Supabase (una base de datos PostgreSQL alojada en la nube). Tu aplicación FastAPI mantendrá dos conexiones de base de datos simultáneas y deberá usarlas de forma deliberada: cada petición llega al almacén correcto.
+Esta es una herramienta interna, no una página pública. Las personas que la utilizan son el personal de operaciones, no clientes. Eso condiciona cada decisión: la claridad y la velocidad importan más que el acabado visual de una campaña de marketing. Un responsable de operaciones registrando una entrega a las 7 de la mañana no tiene paciencia para un formulario roto ni para un mensaje de error críptico.
 
-Esto no es solo un ejercicio de persistencia. El equipo de operaciones incluyó una restricción no negociable en el brief:
-
-> *"Los niveles de stock no se pueden modificar directamente. La única forma de cambiar el inventario es registrando una orden — ya sea una orden de entrada que añade stock, o una orden de salida que lo reduce. Cada orden debe ser trazable al usuario que la creó."*
-
-Tu trabajo es hacer cumplir esa regla a nivel de API y de modelos, usando un ORM para traducir clases Python en tablas relacionales en Supabase. Todos los endpoints de inventario deben agruparse bajo el prefijo de router `/inventory`.
-
-### ¿Qué es un ORM y por qué importa aquí?
-
-Un ORM (Object-Relational Mapper) es una capa de traducción: una clase Python se convierte en una tabla, una instancia en una fila y un atributo en una columna. No reemplaza conocer SQL — entender lo que el ORM genera por debajo es lo que permite usarlo correctamente y depurar errores cuando algo falla. En este hito usarás **SQLModel**, que combina el motor ORM de SQLAlchemy con el sistema de tipos de Pydantic. *No uses SQLAlchemy directamente.*
-
-Antes de escribir cualquier consulta, debes conocer el **problema N+1**. Si cargas una lista de órdenes y después accedes a los datos del producto de cada una dentro de un bucle, generas una consulta adicional por elemento — degradando el rendimiento de forma silenciosa. Estructura tus consultas para cargar los datos relacionados desde el inicio, no en el momento del acceso.
+Dos requisitos del brief que es fácil pasar por alto: 
+1. El formulario de orden de salida debe mostrar el stock disponible actual del producto seleccionado antes de que el usuario envíe el formulario.
+2. Cualquier respuesta `400` de la API debe mostrar al usuario un mensaje de error legible — no un objeto JSON en bruto ni un fallo silencioso.
 
 ---
 
-## Brief de tu tech lead
+## 📋 Brief del responsable de operaciones
 
-**De:** Tech Lead  
-**Asunto:** Hito — arquitectura de doble base de datos + ORM de inventario
+**De:** Responsable de Operaciones  
+**Para:** Unidad Tecnológica
 
-El PRD está listo. Esto es lo que debe hacer el sistema:
+El equipo de backend entregó la API de inventario el sprint pasado — buen trabajo. Ahora necesito la interfaz. Mi equipo no puede usar Postman para registrar entregas.
 
-- **Doble conexión:** La aplicación FastAPI conecta a dos bases de datos simultáneamente: TinyDB (existente, para usuarios y autenticación) y Supabase (nueva, para inventario y órdenes).
-- **Gestión de stock:** Los productos y el stock viven en Supabase. El stock no debe ser una columna editable directamente — siempre se deriva del historial de órdenes.
-- **Órdenes cruzadas:** Las órdenes de entrada incrementan el stock; las órdenes de salida lo reducen. Ambas se almacenan en Supabase y referencian el UUID del usuario de TinyDB — ninguna tabla de usuarios se replica en Supabase.
-- **Modelos y Schemas:** Los modelos ORM usan **SQLModel**. Los schemas Pydantic para request y response están en un archivo separado de los modelos ORM — nunca devuelvas un objeto ORM directamente desde un endpoint.
-- **Enrutamiento:** Todas las rutas de inventario deben registrarse bajo el prefijo `/inventory` usando un `APIRouter` dedicado.
-- **Contexto de negocio:** Revisa tu `CONTEXT.md` — los nombres de entidades, las restricciones de campos y las reglas de negocio son específicas de tu empresa.
+**Esto es lo que necesito en el backoffice:**
+
+- Una página que muestre todos los productos con su stock actual. Usa código de color — quiero ver de un vistazo qué está bajo.
+- Un formulario para registrar una orden de entrada (una entrega recibida).
+- Un formulario para registrar una orden de salida (un consumo o salida). Debe mostrar cuánto stock hay disponible antes de que yo envíe, para no registrar más de lo que tenemos.
+- Una página de sólo lectura con todas las órdenes — entradas y salidas — con el nombre del producto y quién creó cada una.
+- Todas estas páginas requieren inicio de sesión. Si un usuario no está autenticado, redirígelo a la página de login.
 
 ### ✅ Criterios de aceptación: 
-- Todos los endpoints funcionales bajo `/inventory`.
-- Relaciones FK aplicadas a nivel de base de datos.
-- Sin mutación directa de stock.
-- Ambas conexiones activas y usadas correctamente.
+Las cuatro vistas funcionales, autenticadas, consumiendo datos reales de la API, con gestión correcta de errores en fallos de la API.
+
+---
 
 ## 🌱 Cómo Empezar el Proyecto
 
-Este hito extiende el servicio FastAPI de tu monorepo. No crearás un nuevo servicio — añadirás la capa de inventario sobre el existente.
+El frontend del backoffice ya existe en tu monorepo. Estás añadiendo la sección de inventario, no creando una nueva aplicación.
 
 1. **Abre tu repositorio existente** (forkeado desde `https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo`).
-2. **Navega a `services/`** — tu aplicación FastAPI con auth TinyDB debería vivir ya aquí. Si no, detente y monta/termina auth primero.
-3. **Instala las nuevas dependencias:**
+2. **Navega a `uis/backoffice`** — aquí vive tu Next.js backoffice.
+3. **Instala las dependencias** si es necesario:
    ```bash
-   uv add sqlmodel psycopg2-binary
+   npm install
    ```
-4. **Configura el entorno:** Añade tu cadena de conexión de Supabase a `.env`. Deja intacta la configuración TinyDB de auth — no la modifiques.
-5. **Revisa tu contexto:** Lee tu `CONTEXT-company.md` antes de definir cualquier modelo — los nombres de entidades y las restricciones de campos están especificados allí.
-
-### 🔗 Conexión con Supabase
-
-En el panel de Supabase (**Connect** → **Direct**), elige **Transaction pooler** como método de conexión y **URI** como tipo — luego copia esa cadena en `DATABASE_URL`.
-
-*(Nota visual: Configuración de conexión en Supabase: método Transaction pooler y tipo URI)*
-
-*(Nota visual: Cadena de conexión en Supabase: detalles del URI con Transaction pooler)*
+4. **Configura el entorno:** Añade la URL base de la API de inventario a tu archivo `.env.local`. Debe apuntar a tu backend en ejecución:
+   ```env
+   NEXT_PUBLIC_INVENTORY_API_URL=http://localhost:8000
+   ```
+5. **Revisa tu contexto:** Lee tu `CONTEXT-company.md` — los nombres de entidades, etiquetas de campos y vocabulario de dominio deben coincidir con lo que existe en la API y en la interfaz.
+6. **Levanta la API:** Asegúrate de que el servicio de backend (`services/`) está ejecutándose localmente antes de probar el frontend.
 
 ---
 
 ## 💻 Qué Debes Hacer
 
-### Configuración de bases de datos
-- [ ] Añade la cadena de conexión PostgreSQL de Supabase a `.env`. Nunca escribas credenciales directamente en el código.
-- [ ] En `database.py` (o equivalente), inicializa **ambas** conexiones de base de datos: el cliente TinyDB existente y el nuevo motor SQLModel apuntando a Supabase.
-- [ ] Crea una dependencia `get_db` que produzca una sesión SQLModel por petición mediante `Depends()`. No uses variables de sesión globales.
+### Capa de integración con la API
+- [ ] Crea un módulo (p. ej., `lib/inventory.ts`) que centralice todas las llamadas a los endpoints `/inventory`. Ningún componente debe llamar a `fetch` directamente.
+- [ ] Todas las peticiones a endpoints protegidos deben incluir la cabecera `Authorization: Bearer <token>`. Lee el token de donde tu sistema de auth existente lo almacena (localStorage, contexto, cookie).
+- [ ] Gestiona los errores de la API de forma explícita: si el estado de la respuesta es `4xx` o `5xx`, extrae el mensaje de error del cuerpo de la respuesta y muéstraselo al usuario — nunca ignores los errores en silencio.
 
-### Modelos ORM — `models.py`
-- [ ] Define la entidad **equivalente a producto** de tu `CONTEXT.md` (p. ej. `Ingredient`, `SKU`, `Asset`, `MedicalSupply`) con `SQLModel, table=True`, con al menos: `id`, `name`, `sku` y cualquier campo específico de `CONTEXT.md`.
-- [ ] Define el modelo **equivalente a entrada** (p. ej. `IngredientEntry`, `StockEntry`) con: `id`, una FK a la entidad equivalente a producto (`ingredient_id` / `sku_id` / ... según `CONTEXT.md`), `quantity`, `created_at`, `user_uuid` (cadena — referencia al usuario de TinyDB; sin FK, sin replicación de tabla de usuarios), y cualquier otro campo que `CONTEXT.md` exija.
-- [ ] Define el modelo **equivalente a salida** (p. ej. `IngredientExit`, `StockExit`) con el mismo patrón de FK, más `quantity`, `created_at`, `user_uuid` y los campos que `CONTEXT.md` exija.
-- [ ] Llama a `SQLModel.metadata.create_all(engine)` al inicio de la aplicación para inicializar el esquema en Supabase.
+### Página de productos — `/backoffice/inventory/products`
+- [ ] Obtén y muestra todos los productos desde `GET /inventory/products`.
+- [ ] Muestra el valor de `current_stock` para cada producto junto con los campos específicos de entidad definidos en tu CONTEXT.md.
+- [ ] Aplica indicadores visuales de nivel de stock: usa color o iconografía para distinguir el stock saludable del stock bajo. Define tus propios umbrales — documéntalos en un comentario.
+- [ ] Incluye un enlace o botón claramente etiquetado en cada fila de producto para crear una orden de entrada o de salida para ese producto.
 
-### Schemas Pydantic — `schemas.py`
-- [ ] Define schemas de request y response para las entidades equivalentes a producto, entrada y salida como modelos Pydantic independientes — separados de los modelos ORM. Usa los nombres de `CONTEXT.md`.
-- [ ] El schema de respuesta de la entidad equivalente a producto debe incluir un campo `current_stock` (calculado, no almacenado).
-- [ ] Los modelos ORM y los schemas Pydantic deben estar en **archivos separados**. Son clases distintas, aunque algunos campos coincidan.
+### Formulario de orden de entrada — `/backoffice/inventory/orders/inbound`
+- [ ] Renderiza un formulario que envíe datos a `POST /inventory/orders/inbound`.
+- [ ] El selector de producto debe listar todos los productos disponibles por nombre. No pidas al usuario que escriba un ID en bruto.
+- [ ] Tras un envío exitoso, limpia el formulario y muestra un mensaje de confirmación. Ante un `400` / `500`, muestra el mensaje de error de la API en un elemento visible — no solo en la consola.
+- [ ] El formulario debe estar protegido: redirige a los usuarios no autenticados a la página de login.
 
-### Router de inventario — `routers/inventory.py`
-- [ ] Crea un `APIRouter` dedicado con `prefix="/inventory"` y regístralo en la aplicación FastAPI principal.
-- [ ] Implementa los siguientes endpoints dentro de este router:
+### Formulario de orden de salida — `/backoffice/inventory/orders/outbound`
+- [ ] Renderiza un formulario que envíe datos a `POST /inventory/orders/outbound`.
+- [ ] Cuando el usuario selecciona un producto, obtén y muestra su `current_stock` antes de que introduzca una cantidad. Esto debe actualizarse de forma reactiva cuando cambia la selección de producto.
+- [ ] Si la cantidad introducida supera el stock mostrado, muestra una advertencia en el cliente antes de que el usuario envíe. Esto es una salvaguarda de UX — la API aplica la regla real.
+- [ ] Gestiona el `HTTP 400` de la API (stock insuficiente) mostrando el mensaje de error inline junto al campo de cantidad.
 
-| Método | Ruta | Descripción |
-|---|---|---|
-| `GET` | `/inventory/products` | Lista todos los productos con `current_stock` calculado |
-| `POST` | `/inventory/products` | Crea un producto (requiere autenticación) |
-| `GET` | `/inventory/products/{id}` | Obtiene un producto con su stock actual |
-| `POST` | `/inventory/orders/inbound` | Registra una orden de entrada (requiere autenticación) |
-| `POST` | `/inventory/orders/outbound` | Registra una orden de salida (requiere autenticación) |
-| `GET` | `/inventory/orders` | Lista todas las órdenes con datos del producto y `user_uuid` |
+### Página de historial de órdenes — `/backoffice/inventory/orders`
+- [ ] Obtén y muestra todas las órdenes desde `GET /inventory/orders`.
+- [ ] Cada fila debe mostrar: nombre del producto, cantidad, tipo de orden (entrada o salida), fecha de creación y el `user_uuid` que la creó.
+- [ ] Muestra las órdenes de entrada y de salida con una distinción visual (p. ej., color, icono o etiqueta).
+- [ ] Esta página es de sólo lectura. Sin acciones de borrado ni edición.
 
-> **Auth en GET:** las escrituras de producto y órdenes siempre requieren autenticación. Si los `GET` son públicos o autenticados lo define tu `CONTEXT.md` (p. ej. HealthCore exige acceso autenticado en las rutas de inventario).
-
-### Reglas de negocio
-- [ ] `current_stock` se calcula siempre como `SUMA(cantidades de entradas) - SUMA(cantidades de salidas)` para cada entidad equivalente a producto, **acotado por cualquier clave de partición que defina tu `CONTEXT.md`** (p. ej. warehouse). Nunca se almacena como una columna que pueda modificarse directamente.
-- [ ] Una entidad equivalente a producto comienza con stock cero al crearse y solo puede acumular stock a través de registros de entrada.
-- [ ] Cada endpoint de creación de órdenes requiere autenticación. El UUID del usuario autenticado (de TinyDB) debe almacenarse en el campo `user_uuid` de la orden.
-- [ ] Un registro de salida que resultaría en stock negativo (dentro del alcance que define `CONTEXT.md`) debe rechazarse **antes de persistir el registro**, devolviendo `HTTP 400` con un mensaje de error descriptivo.
+### Protección de rutas
+- [ ] Las cuatro páginas de inventario deben redirigir a los usuarios no autenticados a la página de login. Usa el mismo patrón de comprobación de auth ya presente en el backoffice.
 
 > [!IMPORTANT]
-> Los nombres de entidades, nombres de campos y valores específicos del dominio en tu implementación deben coincidir con lo especificado en tu `CONTEXT.md`. Una implementación genérica que ignore el contexto no será aceptada.
-
-### Datos semilla
-- [ ] Siembra las tablas de inventario con los registros mínimos listados en tu `CONTEXT.md` (equivalentes a producto, entradas y salidas) antes de la demo. El stock sembrado debe coincidir con neto entradas - salidas.
+> Los nombres de entidades, etiquetas de campos y el vocabulario de la interfaz deben coincidir con lo especificado en tu CONTEXT.md — usa el lenguaje de dominio de tu empresa, no los términos genéricos de este README.
 
 ---
 
 ## ✅ Qué Vamos a Evaluar
 
-- [ ] Dos conexiones de base de datos están presentes y se usan correctamente: TinyDB para autenticación y consultas de usuario; Supabase (SQLModel) para todas las entidades de inventario.
-- [ ] Todos los endpoints de inventario están agrupados bajo `/inventory` mediante un `APIRouter` dedicado.
-- [ ] Los modelos ORM SQLModel declaran correctamente las relaciones FK: los modelos de entrada/salida referencian la entidad equivalente a producto nombrada en `CONTEXT.md` (no un `Product` genérico salvo que `CONTEXT.md` lo diga).
-- [ ] `current_stock` se calcula a partir de órdenes — ningún endpoint permite modificar directamente un campo de stock en la entidad equivalente a producto.
-- [ ] El cálculo de stock respeta el alcance de `CONTEXT.md` (global vs por partición / por warehouse cuando aplique).
-- [ ] Un registro de salida que supera el stock disponible (dentro de ese alcance) se rechaza con `HTTP 400` antes de que ocurra cualquier escritura.
-- [ ] Cada orden almacena el `user_uuid` del creador autenticado (obtenido de TinyDB).
-- [ ] Los modelos ORM (`models.py`) y los schemas Pydantic (`schemas.py`) están en archivos separados y son estructuralmente distintos — ningún endpoint devuelve un objeto SQLModel directamente.
-- [ ] La sesión SQLModel se inyecta por petición mediante `Depends()` — no existe ninguna sesión global en el código.
-- [ ] Todos los parámetros de conexión están en `.env`; `.env` aparece en `.gitignore`.
-- [ ] Los nombres de entidades y campos coinciden con la especificación del `CONTEXT.md` del estudiante.
-- [ ] Los datos semilla de `CONTEXT.md` están presentes; `GET /inventory/products` refleja el stock neto de esas semillas.
+- [ ] Existe un módulo de integración con la API dedicado — no hay llamadas `fetch` directas dentro de los componentes.
+- [ ] Todas las peticiones a endpoints protegidos incluyen la cabecera `Authorization` con el token del usuario actual.
+- [ ] La página de productos carga datos reales de la API y muestra `current_stock` con indicadores visuales de nivel de stock.
+- [ ] El formulario de orden de entrada envía correctamente y muestra una confirmación o un mensaje de error legible en cada resultado — sin fallos silenciosos.
+- [ ] El formulario de orden de salida muestra el stock actual del producto seleccionado de forma reactiva, antes de que el usuario envíe.
+- [ ] El formulario de orden de salida muestra una advertencia en el cliente cuando la cantidad introducida supera el stock disponible.
+- [ ] Una respuesta `400` del endpoint de salida muestra el mensaje de error de la API de forma visible en la interfaz.
+- [ ] La página de historial de órdenes muestra todas las órdenes con distinción entrada/salida, nombre de producto, cantidad, fecha y `user_uuid`.
+- [ ] Las cuatro páginas redirigen a los usuarios no autenticados al login.
+- [ ] Los nombres de entidades y etiquetas de campos en la interfaz coinciden con la especificación del CONTEXT.md.
 
 ---
 
 ## 📦 Cómo Entregar
 
 1. Confirma y sube todos los cambios a tu fork.
-2. Verifica que `.env` está en `.gitignore` — nunca subas credenciales.
+2. Verifica que `.env.local` está en `.gitignore` — nunca subas URLs de API ni tokens.
 3. Envía la URL de tu fork a través de la plataforma del estudiante.
