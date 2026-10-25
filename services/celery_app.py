@@ -6,13 +6,17 @@ Patrón Productor / Consumidor:
 - Broker & Result Backend: Redis
 - Dead Letter Queue: Integración con task_dlq
 - Reintentos con Backoff Exponencial
+- Timeouts (Hard & Soft) y Trazabilidad con Tracebacks
 """
 
 import os
 import sys
+import time
 import logging
+import traceback
 from typing import Optional, Dict, Any
 from celery import Celery
+from celery.exceptions import SoftTimeLimitExceeded
 
 # Asegurar importaciones relativas desde la raíz del monorepo
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
@@ -22,6 +26,11 @@ if BASE_DIR not in sys.path:
 from services.dlq_service import record_dlq_failure
 
 logger = logging.getLogger("nexova.celery")
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 # Configurar URLs de conexión para Redis Broker y Backend
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -35,7 +44,11 @@ celery_app = Celery(
     backend=RESULT_BACKEND,
 )
 
-# Configuraciones de Estabilidad y Resiliencia
+# Alias para compatibilidad con CLI de Celery (-A services.celery_app)
+app = celery_app
+celery = celery_app
+
+# Configuraciones de Estabilidad, Resiliencia y Timeouts
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
@@ -46,6 +59,8 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,        # 1 mensaje a la vez por worker (fair dispatch)
     result_expires=86400,                # Resultados válidos por 24 horas
     task_track_started=True,             # Monitoreo del estado 'started' en Redis/Flower
+    task_time_limit=300,                 # Hard timeout: 5 minutos
+    task_soft_time_limit=270,            # Soft timeout: 4.5 minutos (SoftTimeLimitExceeded)
 )
 
 
@@ -53,7 +68,9 @@ celery_app.conf.update(
     name="services.celery_app.run_business_performance_pipeline",
     bind=True,
     max_retries=3,
-    default_retry_delay=5
+    default_retry_delay=5,
+    time_limit=300,
+    soft_time_limit=270
 )
 def run_business_performance_pipeline(self, target_date: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -62,19 +79,49 @@ def run_business_performance_pipeline(self, target_date: Optional[str] = None) -
     """
     task_id = self.request.id or "unknown"
     current_retry = self.request.retries
+    start_time = time.time()
+
     logger.info(
         f"🚀 [Celery Worker] Iniciando pipeline de negocio [Task ID: {task_id}] | "
         f"Fecha objetivo: {target_date} | Intento: {current_retry + 1}/3"
     )
 
     try:
+        if BASE_DIR not in sys.path:
+            sys.path.insert(0, BASE_DIR)
         from data.pipelines.pipeline import business_performance_flow
         result = business_performance_flow(target_date=target_date)
-        logger.info(f"✅ [Celery Worker] Pipeline finalizado exitosamente [Task ID: {task_id}]")
+        duration = time.time() - start_time
+        logger.info(
+            f"✅ [Celery Worker] Pipeline finalizado exitosamente [Task ID: {task_id}] | " 
+            f"Estado: SUCCESS | Duración: {duration:.2f}s"
+        )
         return result
 
+    except SoftTimeLimitExceeded as exc:
+        duration = time.time() - start_time
+        tb = traceback.format_exc()
+        logger.error(
+            f"⏰ [Celery Worker] Soft time limit excedido (270s) [Task ID: {task_id}] | "
+            f"Estado: FAILURE | Duración: {duration:.2f}s\nTraceback:\n{tb}"
+        )
+        record_dlq_failure(
+            task_id=task_id,
+            task_name=self.name,
+            arguments={"target_date": target_date},
+            retry_count=current_retry + 1,
+            error_message=f"SoftTimeLimitExceeded: {exc}\n{tb}"
+        )
+        raise exc
+
     except Exception as exc:
-        logger.warning(f"⚠️ [Celery Worker] Fallo en intento {current_retry + 1}/3 para task {task_id}: {exc}")
+        duration = time.time() - start_time
+        tb = traceback.format_exc()
+        status_name = "FAILURE" if current_retry >= self.max_retries else "RETRY"
+        logger.error(
+            f"❌ [Celery Worker] Fallo en intento {current_retry + 1}/3 [Task ID: {task_id}] | "
+            f"Estado: {status_name} | Duración: {duration:.2f}s | Error: {exc}\nTraceback:\n{tb}"
+        )
 
         if current_retry >= self.max_retries:
             # Enviar a Dead Letter Queue tras agotar 3 reintentos
@@ -83,7 +130,7 @@ def run_business_performance_pipeline(self, target_date: Optional[str] = None) -
                 task_name=self.name,
                 arguments={"target_date": target_date},
                 retry_count=current_retry + 1,
-                error_message=str(exc)
+                error_message=f"{exc}\n{tb}"
             )
             raise exc
         else:
@@ -97,7 +144,9 @@ def run_business_performance_pipeline(self, target_date: Optional[str] = None) -
     name="services.celery_app.simulate_flaky_task",
     bind=True,
     max_retries=3,
-    default_retry_delay=2
+    default_retry_delay=2,
+    time_limit=60,
+    soft_time_limit=45
 )
 def simulate_flaky_task(self, should_fail: bool = True, custom_id: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -106,22 +155,35 @@ def simulate_flaky_task(self, should_fail: bool = True, custom_id: Optional[str]
     """
     task_id = self.request.id or "sim-task"
     current_retry = self.request.retries
+    start_time = time.time()
+
     logger.info(f"🧪 [Simulate Task] Task {task_id} | Intento {current_retry + 1}/3 | should_fail={should_fail}")
 
     if should_fail:
         err = ValueError(f"Fallo forzado para verificación de DLQ (Intento {current_retry + 1})")
+        duration = time.time() - start_time
+        tb = traceback.format_exc()
+        status_name = "FAILURE" if current_retry >= self.max_retries else "RETRY"
+
+        logger.warning(
+            f"⚠️ [Simulate Task] Fallo provocado en intento {current_retry + 1}/3 [Task ID: {task_id}] | "
+            f"Estado: {status_name} | Duración: {duration:.2f}s\nTraceback:\n{tb}"
+        )
+
         if current_retry >= self.max_retries:
             record_dlq_failure(
                 task_id=task_id,
                 task_name=self.name,
                 arguments={"should_fail": should_fail, "custom_id": custom_id},
                 retry_count=current_retry + 1,
-                error_message=str(err)
+                error_message=f"{err}\n{tb}"
             )
             raise err
         countdown = (2 ** current_retry) * 2
         raise self.retry(exc=err, countdown=countdown)
 
+    duration = time.time() - start_time
+    logger.info(f"✅ [Simulate Task] Finalizado [Task ID: {task_id}] | Estado: SUCCESS | Duración: {duration:.2f}s")
     return {"status": "SUCCESS", "task_id": task_id, "custom_id": custom_id}
 
 
