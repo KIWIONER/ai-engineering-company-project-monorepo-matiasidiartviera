@@ -52,9 +52,15 @@ class UserBase(BaseModel):
     is_active: bool = True
     role: UserRole = UserRole.user
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel):
+    email: str
     password: str
     profile: Optional[ProfileBase] = None
+
+class UserCreateResponse(BaseModel):
+    id: str
+    created_at: datetime
+    profile: Optional[ProfileResponse] = None
 
 class UserResponse(UserBase):
     id: str

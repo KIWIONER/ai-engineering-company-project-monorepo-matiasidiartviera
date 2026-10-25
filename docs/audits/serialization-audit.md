@@ -31,7 +31,7 @@ Este documento registra el análisis exhaustivo de serialización para cada endp
 ## 2. Módulo de Usuarios (`services/api/routes/users.py`)
 | Método | Endpoint | response_model actual | Retorno real actual | Estado | Diagnóstico / Mejoras requeridas |
 | :--- | :--- | :--- | :--- | :---: | :--- |
-| `POST` | `/users/` | `UserResponse` | Usuario creado + perfil | ⚠️ | **Acoplado**: Reutiliza `UserResponse`. El objeto anidado `Profile` expone `user_id` redundante. |
+| `POST` | `/users/` | `UserResponse` | Usuario creado + perfil | ⚠️ | **Crítico / Fuga y Mass Assignment**: Reutilizaba `UserResponse` exponiendo email en el flujo de registro. Además, `UserCreate` heredaba `role` e `is_active`, permitiendo auto-escalada a admin. |
 | `GET` | `/users/` | `List[UserResponse]` | Lista de usuarios completos | ⚠️ | **Over-fetching**: Reutiliza el esquema de detalle. Requiere un esquema plano más ligero (`UserListItem`) sin relaciones anidadas pesadas. |
 | `GET` | `/users/{user_id}` | `UserResponse` | Usuario con perfil | ⚠️ | **Optimizable**: Tiene `response_model`, pero el `Profile` anidado incluye `user_id` redundante. |
 | `DELETE` | `/users/{user_id}` | *Ninguno* (204) | `None` | ✅ | **Correcto**: Estándar REST 204 No Content sin payload de salida. |
@@ -126,7 +126,7 @@ Este documento registra el análisis exhaustivo y la resolución de serializaci�
 
 | Método | Endpoint | response_model | Retorno real | Estado Final | Cambios Aplicados |
 | :--- | :--- | :--- | :--- | :---: | :--- |
-| `POST` | `/users/` | `UserResponse` | Usuario creado + perfil | ✅ | Limpio: Usa `ProfileResponse` desacoplado sin claves foráneas redundantes. |
+| `POST` | `/users/` | `UserCreateResponse` | ID + Perfil creado | ✅ | **Blindado**: Se desacopló `UserCreate` (eliminando inyección de `role`/`is_active`) y se aplicó `UserCreateResponse` (eliminando fuga de email y escalada de privilegios). |
 | `GET` | `/users/` | `List[UserListItem]` | Lista plana de usuarios | ✅ | **Optimizado**: Se reemplazó `UserResponse` por `UserListItem`, eliminando *over-fetching* de perfiles anidados. |
 | `GET` | `/users/{user_id}` | `UserResponse` | Usuario con perfil | ✅ | Validado: Esquema de detalle enriquecido con `ProfileResponse`. |
 | `DELETE` | `/users/{user_id}` | *Ninguno* (204) | `None` | ✅ | Validado: Estándar REST 204 No Content sin cuerpo. |
@@ -212,7 +212,7 @@ A través de esta auditoría e implementación comprendí que la serialización 
 
 ---
 
-### Los 4 problemas críticos que identifiqué y resolví:
+### Los 5 problemas críticos que identifiqué y resolví:
 
 1. **Fuga directa de modelos ORM (El caso `/inventory/orders`):**
    - *El problema:* Devolver instancias de la base de datos (`SQLModel`) directamente en la respuesta.
@@ -232,6 +232,11 @@ A través de esta auditoría e implementación comprendí que la serialización 
 4. **Ruido relacional y seguridad en perfiles propios (`ProfileResponse`):**
    - *El problema:* Las rutas `/profiles/me` exponían `user_id`, una clave foránea redundante cuando ya sabemos quién es el usuario autenticado.
    - *Mi solución:* Creé una proyección limpia (`ProfileResponse`) que elimina identificadores innecesarios y reduce la superficie expuesta.
+
+5. **Mass Assignment y fuga de datos en el registro (`UserCreate` vs `UserCreateResponse`):**
+   - *El problema:* `UserCreate` heredaba de `UserBase`, permitiendo al cliente inyectar `role="admin"` e `is_active=True`, auto-concediéndose privilegios de administrador. Además, la respuesta reutilizaba `UserResponse`, reenviando el email en el payload de creación.
+   - *El riesgo:* Escalada crítica de privilegios (OWASP API3:2023 - Broken Object Property Level Authorization) y sobreexposición de datos en flujos de registro.
+   - *Mi solución:* Desacoplé `UserCreate` para admitir únicamente credenciales y perfil básico; forcé en el backend `role=UserRole.user` e `is_active=True` por defecto, e implementé el nuevo esquema `UserCreateResponse` que elimina el email de la respuesta.
 
 ---
 
