@@ -1,0 +1,72 @@
+[
+    {
+        "id": "Q01",
+        "query": "¿Cuál es la tarifa de contratación para perfiles tecnológicos en headhunting?",
+        "expected_document": "politicas_contratacion_seleccion.md",
+        "expected_section": "Estructura de Tarifas y Honorarios",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q02",
+        "query": "¿Qué plazo de garantía de reposición ofrece Nexova tras la incorporación?",
+        "expected_document": "politicas_contratacion_seleccion.md",
+        "expected_section": "Garantía de Reposición y Continuidad",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q03",
+        "query": "¿Cuántos días laborables se tarda en presentar la terna de candidatos finalistas?",
+        "expected_document": "politicas_contratacion_seleccion.md",
+        "expected_section": "Procedimiento de Criba y Evaluación Competencial",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q04",
+        "query": "¿Qué herramientas y canales de atención manejan los equipos de outsourcing?",
+        "expected_document": "catalogo_outsourcing_soporte.md",
+        "expected_section": "Canales Integrados y Stack Tecnológico",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q05",
+        "query": "¿Cuáles son los horarios de cobertura del servicio estándar 8x5 de soporte?",
+        "expected_document": "catalogo_outsourcing_soporte.md",
+        "expected_section": "Modalidades de Cobertura y Horarios",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q06",
+        "query": "¿Cuál es el tiempo máximo de resolución garantizado para un incidente crítico P1?",
+        "expected_document": "slas_y_niveles_servicio.md",
+        "expected_section": "Matriz de Prioridad y Tiempos de Respuesta",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q07",
+        "query": "¿Qué porcentaje de crédito de servicio aplica si la disponibilidad mensual cae bajo el 98%?",
+        "expected_document": "slas_y_niveles_servicio.md",
+        "expected_section": "Penalizaciones y Créditos de Servicio (Service Credits)",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q08",
+        "query": "¿Cuáles son los programas de formación ejecutiva y liderazgo adaptativo?",
+        "expected_document": "catalogo_formacion_corporativa.md",
+        "expected_section": "Programas Destacados del Catálogo",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q09",
+        "query": "¿Los cursos de formación son bonificables a través de FUNDAE en España?",
+        "expected_document": "catalogo_formacion_corporativa.md",
+        "expected_section": "Bonificaciones y Esquema Comercial",
+        "is_in_domain": true
+    },
+    {
+        "id": "Q10",
+        "query": "¿Cómo preparar una paella valenciana tradicional?",
+        "expected_document": null,
+        "expected_section": null,
+        "is_in_domain": false
+    }
+]
