@@ -7,6 +7,12 @@ Verifica:
 3. Rechazo honesto ante ausencia de contexto sobre el umbral.
 4. Anclaje de la respuesta en la base documental oficial (company-BRIEFING.md).
 5. Persistencia e inspección mediante checkpointing.
+6. Seguridad Auth Guard en endpoint /agent/query (401 Unauthorized).
+7. Ejecución autenticada en endpoint /agent/query (200 OK con trace).
+8. Enrutamiento autónomo hacia herramienta externa de incidencias (Tool route).
+9. Enrutamiento autónomo hacia RAG para consultas de políticas/normativas.
+10. Ruta de fallback honesto ante ticket inexistente.
+11. Resiliencia ante timeout o fallos de red de la herramienta externa.
 """
 import os
 import sys
@@ -22,12 +28,12 @@ from services.api.routes.auth import get_current_user
 def test_eval_1_empty_question_routing_and_trace():
     """
     Eval 1: Pregunta vacía debe enrutar a rechazo honesto directamente,
-    sin ejecutar retrieve ni generate_answer.
+    sin ejecutar classify_intent, retrieve ni generate_answer.
     """
     checkpointer = MemorySaver()
-    app = create_agent_graph(checkpointer=checkpointer)
+    agent = create_agent_graph(checkpointer=checkpointer)
     thread_config = {"configurable": {"thread_id": "eval-empty-q"}}
-    state = app.invoke(
+    state = agent.invoke(
         {
             "question": "   ",
             "context": [],
@@ -39,18 +45,19 @@ def test_eval_1_empty_question_routing_and_trace():
     )
     trace = state["execution_trace"]
     assert trace == ["validate_input", "honest_refusal"], f"Trace inesperado: {trace}"
-    assert "retrieve" not in trace, "El nodo retrieve no debió ejecutarse."
-    assert "generate_answer" not in trace, "El nodo generate_answer no debió ejecutarse."
+    assert "classify_intent" not in trace
+    assert "retrieve" not in trace
+    assert "generate_answer" not in trace
     assert state.get("error") == "empty_question"
     assert len(state["answer"]) > 0
 
 
 def test_eval_2_node_execution_order_retrieve_before_generation():
     """
-    Eval 2: Cuando hay contexto, retrieve debe ejecutarse estrictamente ANTES que generate_answer.
+    Eval 2: Cuando hay contexto documental, retrieve debe ejecutarse estrictamente ANTES que generate_answer.
     """
     checkpointer = MemorySaver()
-    app = create_agent_graph(checkpointer=checkpointer)
+    agent = create_agent_graph(checkpointer=checkpointer)
     mock_context = [
         {
             "text": "Nexova Solutions ofrece servicios de consultoría tecnológica.",
@@ -62,7 +69,7 @@ def test_eval_2_node_execution_order_retrieve_before_generation():
     with patch("services.agent.nodes.retrieve", return_value=mock_context):
         with patch("services.agent.nodes.generate_answer", return_value="Nexova ofrece consultoría."):
             thread_config = {"configurable": {"thread_id": "eval-order"}}
-            state = app.invoke(
+            state = agent.invoke(
                 {
                     "question": "¿Qué servicios ofrece Nexova?",
                     "context": [],
@@ -79,7 +86,8 @@ def test_eval_2_node_execution_order_retrieve_before_generation():
                 "retrieve debe ejecutarse antes que generate_answer."
             )
             assert "honest_refusal" not in trace, "No debió ocurrir rechazo honesto."
-            assert trace == ["validate_input", "retrieve", "generate_answer"]
+            assert trace == ["validate_input", "classify_intent", "retrieve", "generate_answer"]
+
 
 def test_eval_3_honest_refusal_when_no_context():
     """
@@ -87,10 +95,10 @@ def test_eval_3_honest_refusal_when_no_context():
     el grafo debe enrutar a honest_refusal y NO invocar generate_answer.
     """
     checkpointer = MemorySaver()
-    app = create_agent_graph(checkpointer=checkpointer)
+    agent = create_agent_graph(checkpointer=checkpointer)
     with patch("services.agent.nodes.retrieve", return_value=[]):
         thread_config = {"configurable": {"thread_id": "eval-no-context"}}
-        state = app.invoke(
+        state = agent.invoke(
             {
                 "question": "¿Tienen paquetes turísticos a Júpiter?",
                 "context": [],
@@ -101,9 +109,10 @@ def test_eval_3_honest_refusal_when_no_context():
             config=thread_config,
         )
         trace = state["execution_trace"]
-        assert trace == ["validate_input", "retrieve", "honest_refusal"]
+        assert trace == ["validate_input", "classify_intent", "retrieve", "honest_refusal"]
         assert "generate_answer" not in trace, "generate_answer no debe llamarse si context está vacío."
         assert "no contiene información" in state["answer"].lower()
+
 
 def test_eval_4_grounded_answer_briefing_policy():
     """
@@ -112,7 +121,7 @@ def test_eval_4_grounded_answer_briefing_policy():
     el dato fáctico exacto de company-BRIEFING.md (garantía de reposición de 90 días naturales).
     """
     checkpointer = MemorySaver()
-    app = create_agent_graph(checkpointer=checkpointer)
+    agent = create_agent_graph(checkpointer=checkpointer)
     mock_briefing_chunk = [
         {
             "text": (
@@ -126,7 +135,7 @@ def test_eval_4_grounded_answer_briefing_policy():
     ]
     with patch("services.agent.nodes.retrieve", return_value=mock_briefing_chunk):
         thread_config = {"configurable": {"thread_id": "eval-grounding"}}
-        state = app.invoke(
+        state = agent.invoke(
             {
                 "question": "¿Cuál es la garantía de reposición en headhunting?",
                 "context": [],
@@ -136,10 +145,9 @@ def test_eval_4_grounded_answer_briefing_policy():
             },
             config=thread_config,
         )
-        # Criterios verificables de anclaje:
         answer = state["answer"]
         assert "90 días" in answer or "90" in answer, "La respuesta debe mencionar el plazo de 90 días."
-        assert state["execution_trace"] == ["validate_input", "retrieve", "generate_answer"]
+        assert state["execution_trace"] == ["validate_input", "classify_intent", "retrieve", "generate_answer"]
 
 
 def test_eval_5_checkpointing_state_inspection():
@@ -148,9 +156,9 @@ def test_eval_5_checkpointing_state_inspection():
     y permite inspeccionar el trace y los valores generados.
     """
     checkpointer = MemorySaver()
-    app = create_agent_graph(checkpointer=checkpointer)
+    agent = create_agent_graph(checkpointer=checkpointer)
     thread_config = {"configurable": {"thread_id": "eval-checkpoint-thread"}}
-    state = app.invoke(
+    state = agent.invoke(
         {
             "question": "   ",
             "context": [],
@@ -160,11 +168,11 @@ def test_eval_5_checkpointing_state_inspection():
         },
         config=thread_config,
     )
-    # Inspeccionar el estado guardado en el checkpointer
-    saved_snapshot = app.get_state(thread_config)
+    saved_snapshot = agent.get_state(thread_config)
     assert saved_snapshot is not None
     assert saved_snapshot.values["execution_trace"] == state["execution_trace"]
     assert saved_snapshot.values["answer"] == state["answer"]
+
 
 def test_eval_6_agent_endpoint_unauthorized():
     """
@@ -174,6 +182,7 @@ def test_eval_6_agent_endpoint_unauthorized():
     client = TestClient(app)
     response = client.post("/agent/query", json={"question": "¿Cuál es la garantía?"})
     assert response.status_code == 401
+
 
 def test_eval_7_agent_endpoint_authenticated():
     """
@@ -199,9 +208,133 @@ def test_eval_7_agent_endpoint_authenticated():
             response = client.post("/agent/query", json={"question": "¿Cuál es la garantía?"})
             assert response.status_code == 200
             data = response.json()
-            assert data["execution_trace"] == ["validate_input", "retrieve", "generate_answer"]
+            assert data["execution_trace"] == ["validate_input", "classify_intent", "retrieve", "generate_answer"]
             assert data["sources_count"] == 1
             assert "thread_id" in data
             assert len(data["answer"]) > 0
     finally:
         app.dependency_overrides.clear()
+
+
+# =========================================================================
+# EVALS PARTE 2: HERRAMIENTAS EXTERNAS Y ENRUTAMIENTO AUTÓNOMO
+# =========================================================================
+
+def test_eval_8_autonomous_routing_to_incident_tool():
+    """
+    Eval 8: Una consulta que menciona un número de ticket debe ser enrutada
+    autónomamente a la herramienta externa (incident_tool -> format_tool_answer),
+    sin pasar por el recuperador documental (retrieve).
+    """
+    checkpointer = MemorySaver()
+    agent = create_agent_graph(checkpointer=checkpointer)
+    thread_config = {"configurable": {"thread_id": "eval-tool-ticket-1"}}
+    
+    state = agent.invoke(
+        {
+            "question": "¿Podrías darme el estado actual del ticket #1?",
+            "context": [],
+            "answer": "",
+            "error": None,
+            "execution_trace": [],
+        },
+        config=thread_config,
+    )
+    
+    trace = state["execution_trace"]
+    assert "classify_intent" in trace, "classify_intent debe estar en el trace."
+    assert "incident_tool" in trace, "incident_tool debe ser ejecutado."
+    assert "format_tool_answer" in trace, "format_tool_answer debe formatear el resultado."
+    assert "retrieve" not in trace, "No debe invocar retrieve en consultas de incidencias."
+    assert "generate_answer" not in trace, "No debe invocar generate_answer en consultas de incidencias."
+    assert trace == ["validate_input", "classify_intent", "incident_tool", "format_tool_answer"]
+    
+    # Verificación de datos del ticket en la respuesta
+    assert state.get("tool_data") is not None
+    assert "ticket" in state["answer"].lower() or "incidencia" in state["answer"].lower()
+
+
+def test_eval_9_autonomous_routing_to_rag():
+    """
+    Eval 9: Una consulta sobre normativas/políticas debe enrutarse autónomamente a RAG,
+    sin consultar la herramienta de incidencias.
+    """
+    checkpointer = MemorySaver()
+    agent = create_agent_graph(checkpointer=checkpointer)
+    mock_policy = [
+        {
+            "text": "Política de confidencialidad de Nexova Solutions.",
+            "source_document": "company-BRIEFING.md",
+            "section": "Políticas",
+            "score": 0.92,
+        }
+    ]
+    with patch("services.agent.nodes.retrieve", return_value=mock_policy):
+        with patch("services.agent.nodes.generate_answer", return_value="Nexova exige estricta confidencialidad."):
+            thread_config = {"configurable": {"thread_id": "eval-rag-route"}}
+            state = agent.invoke(
+                {
+                    "question": "¿Cuál es la política de confidencialidad de la empresa?",
+                    "context": [],
+                    "answer": "",
+                    "error": None,
+                    "execution_trace": [],
+                },
+                config=thread_config,
+            )
+            trace = state["execution_trace"]
+            assert trace == ["validate_input", "classify_intent", "retrieve", "generate_answer"]
+            assert "incident_tool" not in trace, "incident_tool no debe llamarse en consultas documentales."
+            assert "tool_fallback" not in trace
+
+
+def test_eval_10_incident_tool_fallback_on_missing_ticket():
+    """
+    Eval 10: Cuando se consulta un ticket que no existe en el gestor de incidencias,
+    el grafo debe ejecutar tool_fallback y dar una respuesta honesta sin alucinar.
+    """
+    checkpointer = MemorySaver()
+    agent = create_agent_graph(checkpointer=checkpointer)
+    thread_config = {"configurable": {"thread_id": "eval-tool-missing-ticket"}}
+    
+    state = agent.invoke(
+        {
+            "question": "¿Cuál es el estatus del ticket #99999999?",
+            "context": [],
+            "answer": "",
+            "error": None,
+            "execution_trace": [],
+        },
+        config=thread_config,
+    )
+    
+    trace = state["execution_trace"]
+    assert trace == ["validate_input", "classify_intent", "incident_tool", "tool_fallback"]
+    assert "format_tool_answer" not in trace, "No debe formatear respuesta exitosa si no existe."
+    assert "no pude confirmar el estado de ese ticket" in state["answer"].lower()
+    assert state.get("tool_data") is None
+
+
+def test_eval_11_incident_tool_timeout_resilience():
+    """
+    Eval 11: Resiliencia ante fallos de red o timeouts en la herramienta externa.
+    Si la herramienta lanza TimeoutError o excepción, debe activar tool_fallback honestamente.
+    """
+    checkpointer = MemorySaver()
+    agent = create_agent_graph(checkpointer=checkpointer)
+    thread_config = {"configurable": {"thread_id": "eval-tool-timeout"}}
+    
+    with patch("services.agent.nodes.get_incident_ticket", side_effect=TimeoutError("Connection timed out after 5.0s")):
+        state = agent.invoke(
+            {
+                "question": "Dime el estado del ticket #1",
+                "context": [],
+                "answer": "",
+                "error": None,
+                "execution_trace": [],
+            },
+            config=thread_config,
+        )
+        trace = state["execution_trace"]
+        assert trace == ["validate_input", "classify_intent", "incident_tool", "tool_fallback"]
+        assert "no pude confirmar el estado de ese ticket" in state["answer"].lower()

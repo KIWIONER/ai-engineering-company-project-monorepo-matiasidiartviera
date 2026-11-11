@@ -1,106 +1,108 @@
-# Agente de Soporte con LangGraph — Parte 1 de 2: Migración y Flujo del Agente
+# Agente de Soporte con LangGraph — Parte 2 de 2: Herramientas Fuera del RAG
 
 ## 🎯 Tu reto
 
 📌 Estás construyendo sobre tu copia del [monorepo](https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo) de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.
 
-Ya construiste las cuatro funciones de tu sistema RAG (`setup`, `embed`, `retrieve`, `query`) y las expusiste como un endpoint de FastAPI. Funciona, pero es una caja negra: recibe una pregunta y devuelve una respuesta, sin que nadie —ni tú— pueda ver qué decisiones tomó en el camino.
+Esta es la **Parte 2 de 2** y depende directamente de la Parte 1: necesitas el grafo de LangGraph ya compilado, con tracing y evals funcionando, antes de continuar aquí.
 
-Tu tech lead abrió un ticket con un requisito claro: antes de agregar cualquier capacidad nueva al agente (Parte 2 de este mismo proyecto), el flujo de razonamiento tiene que quedar explícito como un grafo, con estado, nodos y transiciones que se puedan trazar y evaluar de forma independiente.
+Tu agente hoy solo sabe una cosa: buscar en la base de conocimiento del RAG. Pero soporte no vive solo de documentación — vive de datos que cambian todo el tiempo. El brief de tu tech lead es directo:
 
-> **Nota del tech lead:**  
-> *"No quiero que reescribas la lógica del RAG desde cero — el `retrieve` y el `embed` que ya tienes funcionan. Lo que quiero es que ese mismo comportamiento viva dentro de un grafo de LangGraph, con nodos con una sola responsabilidad, y que cada corrida quede trazada. Si no puedo ver por qué el agente respondió lo que respondió, no puedo confiar en él en producción."*
+> **De:** Tech Lead  
+> **Para:** Equipo de Agentes  
+> 
+> *"El RAG que migraron en la Parte 1 responde bien preguntas sobre procedimientos y políticas, pero cuando un agente de soporte pregunta '¿en qué estado está el ticket 482?', el agente inventa una respuesta porque no tiene forma de consultar eso — esa información no vive en la base de conocimiento, vive en el gestor de incidentes que ya construimos.*  
+> 
+> *Necesito que le den al agente una tool para consultar el sistema de incidentes en tiempo real. Como extra, si les alcanza el tiempo, otra tool para consultar el gestor de inventario también resuelve preguntas frecuentes de soporte ('¿tenemos stock de X?').*  
+> 
+> *Criterio de aceptación: el agente debe decidir por sí mismo cuándo la pregunta requiere el RAG y cuándo requiere una tool externa — sin que el usuario tenga que especificarlo."*
 
-Tres cosas quedan implícitas en ese ticket y son fáciles de pasar por alto:
-1. **El grafo debe compilarse antes de cualquier ejecución**, para detectar errores estructurales en tiempo de build y no en producción.
-2. **El estado que viaja entre nodos debe ser mínimo y explícito**, no el historial completo de la conversación.
-3. **Cada corrida debe producir un trace consultable**, no solo una respuesta final.
+Dos requisitos quedan implícitos en ese brief y son fáciles de pasar por alto:
+1. **Las tools deben leer de los servicios que ya construiste** en proyectos anteriores (el gestor de incidentes y, si lo hiciste, el gestor de inventario) — no se simulan datos nuevos ni se inventa un dataset paralelo.
+2. **Si una tool falla o el servicio no responde**, el grafo necesita una ruta explícita de recuperación, no un error que rompa toda la corrida.
 
 ---
 
-## 📚 Conocimiento complementario: del loop ingenuo al grafo
+## 📚 Conocimiento complementario: por qué esto no es "otro RAG"
 
-Un agente "ingenuo" es simplemente un `while` en Python: llamas al modelo, si pide una tool la ejecutas, le devuelves el resultado, y repites. Funciona para prototipos, pero no escala: no hay forma de pausar, retomar, trazar un paso específico o testear un nodo de forma aislada.
+Es tentador resolver esto indexando los tickets en el mismo vector store del RAG. **No lo hagas:** los tickets cambian de estado en tiempo real, y el RAG está pensado para conocimiento relativamente estable (políticas, procedimientos). 
 
-LangGraph formaliza ese mismo loop como una máquina de estados: cada paso es un nodo, cada decisión sobre a dónde ir después es una arista (*edge*), y el conjunto compilado es el grafo. Esto es lo que te permite, en la Parte 2, agregar una tool nueva sin tocar el resto del flujo: solo agregas un nodo y una arista condicional que decide cuándo usarla.
-
-🔀 **PR aprobado → haz merge a main.** Si no, la funcionalidad no se despliega y tu siguiente rama parte de código desactualizado, lo que acaba en conflictos de merge.
+Una tool que llama directamente al endpoint del gestor de incidentes siempre te da el dato actual; una copia indexada del ticket queda desactualizada en el momento en que alguien cambia su estado. Esta es la diferencia entre **"conocimiento" (RAG)** y **"datos operativos en vivo" (tool call)**.
 
 ---
 
 ## 🌱 Cómo Empezar
 
-1. Sigue trabajando sobre tu fork existente del [monorepo](https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo). Si por algún motivo aún no lo tienes, haz un fork y ábrelo en GitHub Codespaces o clónalo localmente.
-2. Crea una rama nueva: `git switch -c feature/langgraph-agent-base`.
-3. Instala la dependencia con `uv add langgraph` (nunca uses `pip install` ni `pipenv`).
-4. Ubica tu código RAG existente: tus funciones `setup`, `embed`, `retrieve` y `query` en `data/pipelines/`, y el endpoint que las expone en `services/`.
-
-
+1. **Confirma que tu servicio del gestor de incidentes** (`GET /api/incidents`, `GET /api/incidents/{id}`) está corriendo localmente — es el que construiste en un proyecto anterior del monorepo. Si construiste también el gestor de inventario (`GET /inventory/products`), tenlo disponible también para el extra.
+2. **Parte de la rama de la Parte 1** (grafo compilado, con tracing y evals) y crea una rama nueva:
+   ```bash
+   git switch -c feature/langgraph-external-tools
+   ```
+3. No necesitas instalar dependencias nuevas más allá de las que ya usas para llamar HTTP desde tu backend (`httpx`).
 
 ---
 
 ## 💻 Qué Tienes Que Hacer
 
-### Grafo del agente (`services/`)
-
-- [ ] **Define el estado del grafo:** la información mínima que un nodo necesita para decidir el siguiente paso (pregunta del usuario, resultado de la recuperación, respuesta parcial). No incluyas el historial completo de la conversación sin justificar por qué lo necesitas.
-- [ ] **Modela al menos estos nodos:** uno que recibe la pregunta, uno que ejecuta `retrieve` sobre tu base de conocimiento (reutilizando el código de `data/pipelines/`, sin duplicarlo), y uno que genera la respuesta final a partir del contexto ya recuperado usando tu paso de generación (`generate_answer(question, context)` — la función que separaste de `query()` en el proyecto RAG).
-- [ ] **Define las aristas (edges) entre nodos según condiciones de salida explícitas**, no como una secuencia fija hardcodeada. Incluye al menos una condición real, no solo una línea recta — por ejemplo: si la pregunta está vacía, enruta a un error/`END` claro en vez de recuperar; si `retrieve` no devuelve contexto por encima del umbral, enruta a un nodo que responda con honestidad ("no tengo información sobre eso") en lugar de forzar la generación sobre contexto vacío.
-
-> **Contrato de nodos (léelo con atención):** El nodo `retrieve` llama a `retrieve()`; el nodo de generación llama a tu función de generación (`generate_answer(question, context)`) con el contexto que el nodo `retrieve` ya produjo. No metas el `query()` monolítico (`retrieve` + generación juntos) dentro de un solo nodo — eso vuelve a ejecutar la recuperación y colapsa justamente el flujo que se te pidió hacer explícito y trazable. Si reutilizas `query()` directamente, debe aceptar chunks ya recuperados y saltarse su `retrieve()` interno.
-
-- [ ] **Compila el grafo antes de cualquier ejecución** — la compilación debe fallar de forma clara si hay un error estructural (nodo sin conexión, estado mal tipado, etc.).
-- [ ] **Implementa checkpointing en cada transición de estado relevante**, para que una corrida pueda inspeccionarse o retomarse.
-### Tracing y evaluación
-
-- [ ] **Instrumenta el grafo para que cada corrida produzca un trace:** qué nodos se ejecutaron, en qué orden, y qué produjo cada uno. Puedes usar una herramienta de tracing (por ejemplo, LangSmith) o tu propio log estructurado si no tienes acceso a una — lo que importa es que el trace sea consultable después de la corrida, no solo impreso en consola.
-- [ ] **Escribe al menos 3 evals:** casos de prueba con una pregunta de entrada y un criterio verificable sobre la respuesta o sobre el trace (por ejemplo: *"para esta pregunta, el nodo `retrieve` debe ejecutarse antes que `query`"*). Los evals corren contra el trace, no contra una ejecución en vivo cada vez.
-- [ ] **Los evals deben vivir en `tests/pipelines/`** y ser ejecutables con un solo comando.
-- [ ] **Al menos un eval debe verificar que la respuesta sigue anclada en tu base de conocimiento RAG existente** (p. ej. una pregunta de política conocida devuelve la entidad/dato esperado de `company-BRIEFING.md`). La corrección del trace/enrutamiento no reemplaza el anclaje de la respuesta: tus evals del agente son adicionales a tus tests RAG existentes, que deben seguir pasando. El anclaje sigue siendo criterio de aceptación — una corrida con un trace perfecto pero una respuesta que ignora las políticas del BRIEFING es un fallo.
+### Tool obligatoria: consulta de tickets de soporte
+- [ ] **Define un contrato tipado** de entrada/salida para la tool (ej. entrada: `ticket_id` o filtros de búsqueda; salida: estado, categoría, origen, fechas — los mismos campos que expone tu API de incidentes).
+- [ ] **Implementa la tool para que lea de tu gestor de incidentes existente** (`GET /api/incidents` o `GET /api/incidents/{id}`) — nunca datos simulados ni hardcodeados. Puedes llamarlo de dos formas, ambas aceptadas: **(a) por HTTP** al servicio corriendo, o **(b) en-proceso** a través de su capa de servicio/repositorio si el gestor de incidentes vive en el mismo paquete del monorepo. Elige la que coincida con tu arquitectura; lo que se rechaza es un dataset falso paralelo, no el transporte.
+- [ ] **Si el servicio de incidentes requiere autenticación** (p. ej. un JWT o API key), pasa credenciales válidas igual que en tus otras llamadas backend-a-backend — léelas de entorno/config, nunca hardcodees un token. Si tu servicio no tiene auth, indícalo en tu PR para que el revisor no la espere.
+- [ ] **La tool debe ser de solo lectura:** únicamente consulta (`GET`) los datos de incidentes. Una tool nunca debe crear, actualizar ni eliminar tickets.
+- [ ] **Agrega al grafo un nodo para esta tool y una arista condicional** que decida cuándo el agente debe usarla en lugar de (o además de) el RAG.
+- [ ] **Define un timeout explícito y numérico** para la llamada (un valor concreto, p. ej. 3–5 segundos) — si el servicio de incidentes no responde a tiempo, el grafo no debe quedar colgado.
+- [ ] **Define una ruta de fallback:** si la tool agota el timeout, falla o el ticket no existe, el agente responde algo honesto (*"no pude confirmar el estado de ese ticket ahora mismo"*), nunca inventa un estado.
 
 ---
 
-### Endpoint (`services/`)
+### Tool extra (opcional): consulta de inventario
+- [ ] **Si tu empresa tiene un gestor de inventario construido**, define el mismo tipo de contrato tipado para consultar stock por producto (`GET /inventory/products`).
+- [ ] **Aplica las mismas reglas:** timeout, fallback ante fallo, sin datos simulados.
 
-- [ ] **Expón el grafo compilado a través de un endpoint** (por ejemplo `POST /agent/query`) que reemplace o conviva con el endpoint RAG existente. El endpoint no debe contener lógica de negocio propia — solo invoca el grafo.
-- [ ] **Si el grafo falla en cualquier nodo**, el endpoint responde con un mensaje de error claro, nunca con un stack trace crudo.
+---
 
-> ⚠️ **IMPORTANTE:** El comportamiento del agente (qué documentos recupera, qué responde) debe seguir siendo correcto según tu base de conocimiento RAG existente. Migrar a LangGraph no es una excusa para que las respuestas dejen de estar ancladas en los datos de tu empresa.
+### Enrutamiento del agente
+- [ ] **El agente debe decidir automáticamente**, a partir de la pregunta del usuario, si necesita el RAG, una tool, o ambos — sin que el usuario indique explícitamente qué fuente usar.
+- [ ] **Ninguna tool hace más de una cosa:** si te encuentras haciendo que una sola tool *"busque tickets o inventario según el caso"*, sepáralas en dos tools distintas.
+
+---
+
+### Tracing y evaluación (extendidos desde la Parte 1)
+- [ ] **El trace de cada corrida** debe mostrar con claridad si se usó el RAG, una tool, o ambos, y en qué orden.
+- [ ] **Agrega al menos 2 evals nuevos** que verifiquen el enrutamiento: una pregunta que debe resolverse con una tool (no con el RAG) y una pregunta que debe resolverse con el RAG (no con una tool). Un tercer eval opcional puede verificar el comportamiento de fallback cuando el servicio de incidentes no está disponible.
+
+> ⚠️ **IMPORTANTE:** Las tools deben leer de los servicios reales que ya construiste (incidentes, e inventario si aplica). Una implementación que simule esos datos en lugar de llamar a tu propio backend no será aceptada.
 
 ---
 
 ## ✅ Qué Vamos a Evaluar
 
-- [ ] **El estado del grafo es mínimo y explícito** — no arrastra historial completo sin justificación.
-- [ ] **Existen nodos con responsabilidad única** para recepción de la pregunta, recuperación y generación de respuesta.
-- [ ] **Las aristas están definidas por condiciones de salida**, no hardcodeadas como una secuencia fija.
-- [ ] **El grafo se compila explícitamente** antes de ejecutarse y falla con un error claro ante un problema estructural.
-- [ ] **Existe checkpointing verificable** en al menos una transición de estado.
-- [ ] **Cada corrida produce un trace consultable**, no solo una respuesta final.
-- [ ] **Hay al menos 3 evals ejecutables en `tests/pipelines/`**, con criterios verificables sobre el trace o la respuesta, y al menos uno verifica que la respuesta sigue anclada en la base de conocimiento del BRIEFING.
-- [ ] **Los tests RAG existentes siguen pasando** — los evals del agente extienden, no reemplazan, el anclaje de la respuesta como criterio de aceptación.
-- [ ] **El endpoint invoca el grafo** sin duplicar lógica de negocio y maneja errores sin exponer detalles internos.
-- [ ] **Los nodos llaman a `retrieve` y al paso de generación por separado** — ningún nodo re-envuelve el `query()` monolítico (`retrieve` + generación).
-- [ ] **Las funciones `retrieve` / `embed` / `query` existentes se reutilizan** desde `data/pipelines/`, no se reescriben desde cero.
+- [ ] **La tool de tickets tiene un contrato de entrada/salida tipado** y lee del gestor de incidentes real (HTTP o capa de servicio en-proceso — ambas aceptadas), pasando auth correctamente si el servicio la requiere.
+- [ ] **Las tools son de solo lectura** — ninguna tool crea, actualiza ni elimina datos en los servicios de incidentes/inventario.
+- [ ] **Existe un timeout explícito y numérico** en la llamada a la tool.
+- [ ] **Existe una ruta de fallback verificable** cuando la tool falla o el recurso no existe — sin respuestas inventadas.
+- [ ] **El agente enruta correctamente entre RAG y tool(s)** según el contenido de la pregunta, sin instrucción explícita del usuario.
+- [ ] **Cada tool tiene una única responsabilidad** (no hay una tool que combine tickets e inventario).
+- [ ] **El trace de cada corrida** permite distinguir qué fuente(s) se usaron y en qué orden.
+- [ ] **Hay al menos 2 evals nuevos** que verifican el enrutamiento correcto entre RAG y tool.
+- [ ] *(Extra)* **La tool de inventario**, si se implementó, sigue las mismas reglas de contrato, timeout y fallback.
 
 ---
 
 ## 📦 Cómo Entregar Este Proyecto
 
-Esta es la **Parte 1 de 2**. Se entrega mediante su propio Pull Request, independiente del de la Parte 2 (que puede construir sobre esta rama, pero se revisa por separado).
+Esta es la **Parte 2 de 2**. Se entrega mediante su propio Pull Request, separado del de la Parte 1 — puede partir de esa rama, pero se revisa de forma independiente.
 
 ```text
-data/
-  pipelines/          ← funciones RAG existentes, reutilizadas sin duplicar
-
 services/
-  <agent-service>/    ← grafo de LangGraph, nodos, endpoint
+  <agent-service>/    ← nodo(s) y tool(s) nuevas agregadas al grafo de la Parte 1
 
 tests/
-  pipelines/          ← evals del agente
+  pipelines/          ← evals de enrutamiento y fallback
 ```
 
-1. Sube tu rama con la estructura anterior y abre un Pull Request al repositorio original con la etiqueta `langgraph-agent-base`.
+1. Sube tu rama con la estructura anterior y abre un Pull Request al repositorio original con la etiqueta `langgraph-external-tools`.
 2. Asegúrate de que el PR incluya:
-   - Una captura o export del trace de al menos una corrida completa.
-   - El resultado de correr los evals (consola o archivo).
+   - El trace de una corrida donde el agente usó la **tool de tickets**.
+   - El trace de una corrida donde el agente usó el **RAG** (para demostrar el enrutamiento correcto).
+   - El resultado de correr los **evals nuevos**.

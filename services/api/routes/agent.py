@@ -39,6 +39,8 @@ class AgentQueryResponse(BaseModel):
     execution_trace: list[str]
     sources_count: int
     thread_id: str
+    intent: Optional[str] = None
+    tool_data: Optional[dict[str, Any]] = None
     error: Optional[str] = None
 
 @router.post(
@@ -81,5 +83,7 @@ def query_agent(
         execution_trace=final_state.get("execution_trace", []),
         sources_count=len(final_state.get("context", [])),
         thread_id=active_thread,
+        intent=final_state.get("intent"),
+        tool_data=final_state.get("tool_data"),
         error=final_state.get("error"),
     )
