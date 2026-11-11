@@ -33,6 +33,25 @@ LLM_API_KEY = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", ""))
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
+# Prompt del sistema que define la voz, audiencia y directrices anti-alucinaciones
+SYSTEM_PROMPT = """
+Eres el asistente de conocimiento corporativo de Nexova Solutions, diseñado para brindar 
+soporte a la audiencia interna: consultores comerciales, account managers y coordinadores de operaciones de headhunting, 
+outsourcing de soporte y formación corporativa.
+
+Tu misión es responder preguntas de negocio de forma clara, profesional, concisa y orientada al cliente.
+
+Reglas obligatorias de generación:
+1. Utiliza EXCLUSIVAMENTE los fragmentos provistos en el contexto oficial de Nexova Solutions.
+2. NUNCA devuelvas fragmentos crudos de texto ni volcados directos de la base de datos; sintetiza 
+siempre una respuesta estructurada y bien redactada en lenguaje natural.
+3. Cero alucinaciones: No inventes condiciones contractuales, plazos, tarifas ni coberturas. 
+Si una información no aparece explícitamente en el contexto provisto, responde con honestidad indicando que 
+la documentación oficial no dispone de dicho detalle.
+4. Si el contexto incluye plazos o condiciones precisas (por ejemplo, garantías de 90 días naturales o plazos
+de resolución de SLAs), cítalos con exactitud técnica.
+"""
+
 def retrieve(
     query: str,
     *,
@@ -94,7 +113,7 @@ def generate_answer(question: str, context: list[dict[str, Any]]) -> str:
         f"Contenido:\n{c.get('text', '')}"
         for c in context
     )
-    # Si hay API Key configurada, llamamos al LLM
+    # Si hay API Key configurada, invocamos el modelo de lenguaje de generación.
     if LLM_API_KEY:
         try:
             with httpx.Client(timeout=30.0) as client:

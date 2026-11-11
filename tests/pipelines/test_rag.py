@@ -79,7 +79,35 @@ def test_generate_answer_fallback_with_context():
         assert "slas_y_niveles_servicio.md" in answer
         assert "P1 requiere respuesta en menos de 15 minutos." in answer
 
-
+@patch("httpx.Client")
+def test_generate_answer_with_llm_api_key(mock_client_class):
+    """Con API key configurada, invoca al LLM pasando SYSTEM_PROMPT y retorna su síntesis."""
+    mock_client = MagicMock()
+    mock_client_class.return_value.__enter__.return_value = mock_client
+    
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "choices": [{"message": {"content": "Respuesta sintetizada por el LLM con la voz corporativa de Nexova."}}]
+    }
+    mock_response.raise_for_status = MagicMock()
+    mock_client.post.return_value = mock_response
+    mock_context = [
+        {
+            "source_document": "politicas_contratacion_seleccion.md",
+            "section": "Garantía de Reposición y Continuidad",
+            "text": "Garantía de 90 días naturales.",
+        }
+    ]
+    with patch("data.pipelines.rag.LLM_API_KEY", "sk-test-token-12345"):
+        answer = generate_answer("¿Cuál es la garantía?", context=mock_context)
+        assert answer == "Respuesta sintetizada por el LLM con la voz corporativa de Nexova."
+        
+        # Validar que se invocó al LLM pasando SYSTEM_PROMPT en el payload sin NameError
+        mock_client.post.assert_called_once()
+        payload_sent = mock_client.post.call_args.kwargs["json"]
+        assert payload_sent["messages"][0]["role"] == "system"
+        assert "Nexova Solutions" in payload_sent["messages"][0]["content"]
+        
 # ==========================================
 # 3. Tests de Orquestación (query)
 # ==========================================
