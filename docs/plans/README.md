@@ -28,6 +28,7 @@ Este documento recopila y ordena cronológicamente todos los planes de implement
 | **20** | `2026-11-11` | [rag-knowledge-base-qdrant-fastapi-plan.md](file:///workspaces/ai-engineering-company-project-monorepo-matiasidiartviera/docs/plans/rag-knowledge-base-qdrant-fastapi-plan.md) | RAG / Vectores | Sistema RAG con FastEmbed, base vectorial Qdrant y endpoint seguro. |
 | **21** | `2026-11-11` | [langgraph-support-agent-base-plan.md](file:///workspaces/ai-engineering-company-project-monorepo-matiasidiartviera/docs/plans/langgraph-support-agent-base-plan.md) | Agente IA / Grafos | Agente de soporte orquestado con LangGraph, checkpointing y evals. |
 | **22** | `2026-11-11` | [langgraph-agent-external-tools-plan.md](file:///workspaces/ai-engineering-company-project-monorepo-matiasidiartviera/docs/plans/langgraph-agent-external-tools-plan.md) | Agente IA / Tools | Herramientas externas (incidentes en vivo), enrutador autónomo y evals. |
+| **23** | `2026-11-11` | [emerald-command-center-ui-design-system-plan.md](file:///workspaces/ai-engineering-company-project-monorepo-matiasidiartviera/docs/plans/emerald-command-center-ui-design-system-plan.md) | Sistema de Diseño / Multi-UI | Arquitectura visual integral *Emerald Command Center* en 5 fases para `website`, `backoffice` y `talent-pipeline-tracker`. |
 
 ---
 
