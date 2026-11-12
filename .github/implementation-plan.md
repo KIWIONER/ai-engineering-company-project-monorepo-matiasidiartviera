@@ -1,213 +1,279 @@
-# Implementation Plan: Colas de Mensajes y Tareas Asíncronas con Redis y Celery (Ticket #DEV-55)
+# Implementation Plan: Servidor MCP con OAuth 2.1 y Migración del Agente LangGraph
 
-> **Documento de Planificación y Arquitectura de Producción**  
-> **Basado en:** `.github/STRATEGY.md`, `CONTEXT-company.md` (Nexova Solutions), `docker-compose.yml`, `services/reporting/routes.py`, `services/api/routes/telemetry.py`  
-> **Marco Metodológico:** Code Refinement Suite (Nivel 3 — Arquitectura Crítica de Sistemas Distribuidos & Procesamiento Asíncrono)  
-> **Modalidad:** Modo Tutor / Aprendizaje guiado (el mentor acompaña, el usuario ejecuta paso a paso)  
-
----
-
-## 📌 Contexto y Objetivos del Hito
-
-En Nexova Solutions, la API en producción atiende múltiples clientes y dashboards corporativos. Sin embargo, ciertas operaciones pesadas de cómputo analítico (como la ejecución del pipeline de desempeño de negocio y generación de KPIs ejecutivos en `services/reporting/routes.py` o la consolidación de telemetría técnica) bloqueaban el ciclo request-response o dependían de background tasks ligadas al hilo del servidor web, degradando la concurrencia y la disponibilidad general de la API.
-
-El **Ticket #DEV-55** exige implementar una arquitectura desacoplada basada en el **Patrón Productor / Consumidor**:
-1. **Infraestructura con Redis & Flower en Docker:** Desplegar Redis oficial (puerto 6379, política `noeviction`) como message broker y result backend, y Flower (puerto 5555) para observabilidad en tiempo real.
-2. **Módulo Celery Desacoplado (`services/celery_app.py`):** Configurar Celery apuntando a `REDIS_URL` con serialización segura y timeouts estrictos.
-3. **Conversión Asíncrona de Operación Pesada:** Transformar el endpoint de disparo del pipeline (`POST /reporting/trigger`) para que encole la tarea en Celery y devuelva **`202 Accepted`** con `{"task_id": "...", "status": "pending"}` en **menos de 200 ms**.
-4. **Endpoint de Polling de Tareas:** Implementar `GET /tasks/{task_id}` que consulte el estado en Redis y retorne los estados canónicos (`pending`, `started`, `success`, `failure`) junto con el resultado cuando esté disponible.
-5. **Resiliencia, Backoff y Dead Letter Queue (DLQ):** Configurar reintentos automáticos con `max_retries=3` y backoff exponencial (`countdown`). Al fallar por 3ª vez consecutiva, la tarea debe registrarse en la tabla de base de datos `task_dlq` (Dead Letter Queue) con `task_id`, número de intentos, timestamp y traza de error.
-6. **Aislamiento de Procesos:** Los workers de Celery se ejecutan en procesos separados de FastAPI; detener la API no interrumpe el procesamiento ni descarta mensajes encolados.
+**Documento:** `.github/implementation-plan.md`  
+**Copia de Respaldo:** `docs/plans/mcp-oauth-tools-plan.md`  
+**Rama de Trabajo:** `feature/mcp-oauth-tools`  
+**Nivel de Complejidad:** Nivel 3 — Arquitectura / Módulo Crítico  
+**Framework de Calidad:** `skills/code-refinement-suite/SKILL.md`  
 
 ---
 
-## 🏛️ PACK 1: ARCHITECT — Evaluación de Alternativas Técnicas y Veredicto
+## 🧭 Resumen Ejecutivo y Objetivos
 
-Se evaluaron tres arquitecturas mediante **Tree of Thoughts (ToT)** para la delegación de tareas asíncronas y gestión de colas:
+El presente plan establece la arquitectura, desarrollo, aseguramiento y migración para exponer las capacidades operativas de la compañía (Gestión de Incidentes y Consulta de Inventario) a través de un **Servidor MCP (Model Context Protocol)** independiente bajo el directorio `mcps/`. 
 
-### Comparativa de Alternativas (ToT):
+El servidor estará protegido mediante **OAuth 2.1 / OIDC** utilizando exclusivamente **`mcpauth`** (modo Resource Server con validación de JWT Bearer tokens, publicación de Protected Resource Metadata y control granular de *scopes*). 
+
+Adicionalmente, se migrará el agente de soporte LangGraph (`services/agent/`) para que consuma estas capacidades a través de **`langchain-mcp-adapters`**, eliminando el acoplamiento directo previo con la base de datos o APIs internas sin romper el enrutamiento autónomo existente entre RAG y Tools.
+
+---
+
+## 📐 PACK 1: ARCHITECT (Ideación y Decisión Técnica)
+
+### 1.1 Árbol de Pensamiento (Tree of Thoughts - ToT)
+
+Evaluamos tres dimensiones críticas de diseño para determinar la mejor solución arquitectónica:
 
 ```mermaid
 flowchart TD
-    Root[Decisión Arquitectónica DEV-55] --> A[Rama A: FastAPI BackgroundTasks en proceso API]
-    Root --> B[Rama B: RabbitMQ Broker + Celery Workers + MongoDB Backend]
-    Root --> C[Rama C: Redis Broker/Backend en Docker + Celery + Flower + PostgreSQL DLQ]
-    
-    A -->|Descartada| A1[Comparte memoria y CPU con FastAPI; si la API cae se pierden tareas encoladas; sin reintentos robustos]
-    B -->|Descartada| B1[Sobrecomplejidad de infraestructura introduciendo RabbitMQ y MongoDB en un monorepo existente]
-    C -->|Seleccionada| C1[Redis ligero con persistencia, Celery nativo, Flower para UI de colas y DLQ auditada en PostgreSQL/SQLite]
+    subgraph Transporte MCP
+        T1[Rama A: stdio local] -->|Descartada| R1[No permite clientes remotos ni MCP Playground web]
+        T2[Rama B: Streamable HTTP / SSE] -->|Seleccionada| R2[Soporta Codespaces forwarded URL, OAuth headers y múltiples clientes]
+        T3[Rama C: WebSocket puro] -->|Descartada| R3[Menor soporte en SDKs estándar FastMCP y mcpauth]
+    end
+
+    subgraph Autenticación y Autorización
+        A1[Rama A: FastMCP Simple Auth] -->|Prohibida por Spec| S1[No cumple estándar MCP Auth OAuth 2.1 Resource Server]
+        A2[Rama B: Custom FastAPI Middleware] -->|Riesgo Alto| S2[Reinventa la rueda y no implementa Protected Resource Metadata estándar]
+        A3[Rama C: MCP Auth mcpauth Resource Server] -->|Seleccionada| S3[Estándar RFC OAuth 2.1, valida JWT, required_scopes y discovery metadata]
+    end
+
+    subgraph Migración del Agente LangGraph
+        M1[Rama A: Cliente HTTP manual dentro del nodo] -->|Descartada| C1[No aprovecha el protocolo MCP ni estandariza el schemas/discovery]
+        M2[Rama B: langchain-mcp-adapters MultiServerMCPClient] -->|Seleccionada| C2[Carga dinámica de tools, desacoplamiento nativo y soporte asíncrono]
+    end
 ```
 
-1. **Rama A (FastAPI BackgroundTasks interno):**
-   - *Enfoque:* Mantener las tareas en segundo plano dentro del hilo de FastAPI mediante `BackgroundTasks`.
-   - *Veredicto:* **Descartada categóricamente.** No existe persistencia de colas; si el proceso de FastAPI se reinicia o satura de memoria, todas las tareas pendientes se pierden. No soporta reintentos distribuidos con backoff ni Dead Letter Queue.
-2. **Rama B (Stack pesado RabbitMQ + MongoDB):**
-   - *Enfoque:* Levantar un clúster RabbitMQ para AMQP avanzado y MongoDB para almacenar resultados.
-   - *Veredicto:* **Descartada.** Incurre en sobreingeniería extrema y añade múltiples servicios foráneos que dificultan el despliegue local y la integración con el esquema de base de datos existente de Nexova.
-3. **Rama C (Redis en Docker + Celery Worker Desacoplado + Flower + Tabla `task_dlq` en BD) [Seleccionada]:**
-   - *Enfoque:*
-     - Redis oficial en `docker-compose.yml` (puerto 6379, memoria `noeviction` para garantizar que ningún mensaje se descarte).
-     - Instancia Celery en `services/celery_app.py` leyendo `REDIS_URL`.
-     - Tarea `@celery_app.task(bind=True, max_retries=3)` que encapsula el cálculo pesado (`data.pipelines.pipeline.business_performance_flow`).
-     - Dead Letter Queue implementada mediante la tabla `task_dlq` gestionada vía SQLAlchemy, garantizando trazabilidad unificada con el resto de la base de datos de Nexova.
-     - Flower en puerto 5555 para monitoreo gráfico en tiempo de desarrollo.
-   - *Veredicto:* **Aprobada unánimemente.** Satisface el 100% de los criterios del ticket, mantiene la pila técnica homogénea y proporciona resiliencia industrial.
+#### Justificación de Decisiones ToT:
+1. **Transporte (`Streamable HTTP / SSE`):** El servidor debe poder ser consumido de forma remota por herramientas de inspección (como **MCP Playground** a través de la URL pública reenviada de GitHub Codespaces) y por servicios distribuidos. `stdio` confina la comunicación a pipes de procesos locales del sistema operativo, impidiendo la autenticación HTTP Bearer estándar y el acceso desde clientes externos o web.
+2. **Autenticación (`mcpauth`):** El requerimiento del Tech Lead prohíbe explícitamente los helpers de autenticación integrados de FastMCP. Utilizar `mcpauth` permite configurar el servidor como un verdadero **OAuth 2.1 Resource Server**, exponiendo `/.well-known/oauth-protected-resource` y forzando `required_scopes` específicos para cada tool (`incidents:read`, `incidents:write`, `inventory:read`).
+3. **Consumo en el Agente (`langchain-mcp-adapters`):** Convierte las tools descubiertas del servidor MCP en `BaseTool` de LangChain compatibles con el grafo de LangGraph, permitiendo reemplazar el nodo de tool directa sin alterar el grafo de control ni el enrutamiento inteligente RAG.
 
-### Veredicto de los 3 Expertos:
-- **Dev Lead:** Desacoplar la orquestación mediante Celery y Redis permite que la API responda en < 50ms devolviendo `202 Accepted`. Los mensajes enviados a la cola son ultraligeros (solo `{"target_date": "YYYY-MM-DD"}`), cumpliendo la regla de oro: *"el worker recupera los datos pesados, el mensaje solo lleva referencias"*.
-- **Sec Specialist:** Redis se aísla en la red interna de Docker (`nexova-network`), requiriendo autenticación si se expone externamente. El endpoint `GET /tasks/{task_id}` mantiene la protección de sesión mediante `Auth Guard Standard` (`Depends(get_current_user)`).
-- **Operaciones / UX Lead:** Flower proporciona visibilidad inmediata de la tasa de procesamiento y tiempos de ejecución. Además, el endpoint `GET /tasks/{task_id}` permite al frontend o a los dashboards de Nexova implementar barras de progreso o estados reactivos de forma transparente.
+---
+
+### 1.2 Análisis Multidisciplinar (3 Expertos)
+
+#### 🎨 Experto en UX/UI y Experiencia de Agentes (Developer / Agent Experience)
+- **Claridad del Discovery:** Los agentes LLM externos no disponen de contexto humano adicional. Las descripciones de las tools y los esquemas JSON de entrada/salida deben actuar como documentación auto-contenida (equivalente a un `--help` interactivo).
+- **Consistencia en Respuestas de Error:** Cuando un cliente comete un error de validación o intenta una operación no permitida, el servidor debe responder con un mensaje descriptivo y estructurado que guíe al modelo (ej. *"Operación no permitida: el inventario es estrictamente de solo lectura"*).
+- **Ergonomía en MCP Playground:** El endpoint HTTP SSE debe responder inmediatamente a los handshakes de inicialización (`initialize`, `tools/list`, `tools/call`).
+
+#### 🏗️ Tech Lead / Arquitecto de Software
+- **Separación de Responsabilidades:** El servidor MCP vivirá en `mcps/company_tools/` y no dentro de `services/`. El servidor actúa como una capa de presentación y orquestación estandarizada que se conecta a los servicios backend existentes (`services/api/routes/incidents.py` y `services/api/routes/inventory.py`), sin duplicar lógica de negocio ni alterar la base de datos de manera anárquica.
+- **Transición Estricta de Estados en Incidentes:** Cualquier cambio de estado de incidentes DEBE invocar el endpoint especializado `PATCH /api/incidents/{id}/status` con validación de modelo (`IncidentUpdateStatus`), rechazando parches genéricos sobre la entidad.
+- **Deprecación Limpia en el Agente:** En `services/agent/`, la función antigua `get_incident_ticket()` que accedía directamente a TinyDB quedará marcada como `@deprecated` y el nodo `incident_tool_node` pasará a consumir exclusivamente el cliente MCP.
+
+#### 🛡️ Especialista en Ciberseguridad
+- **OAuth 2.1 Resource Server:** Todo request sin cabecera `Authorization: Bearer <token>` válido debe ser rechazado inmediatamente con código HTTP 401 (`Unauthorized`).
+- **Principio de Mínimo Privilegio (PoLP):** Implementación de `required_scopes` en cada tool. Por ejemplo, un token con scope `incidents:read` no podrá invocar `incidents_create` ni `incidents_update_status` (devolviendo 403 `Forbidden`).
+- **Guardia Inviolable de Solo Lectura para Inventario:** La herramienta de inventario debe estar blindada a nivel de código y diseño. Si un cliente intenta invocar una mutación o pasar flags de modificación, el servidor lanzará una excepción explícita de violación de acceso (`PermissionDeniedError` / 403), auditando el intento.
+- **Trazabilidad y Auditoría:** Cada invocación registrará un log estructurado con `timestamp`, `client_id` (del token JWT), `tool_name`, `parameters` (sanitizados) y `status` (SUCCESS / ERROR / FORBIDDEN).
+
+---
+
+## 📝 PACK 2: PLANNER (Estructuración y Refinamiento del Plan)
+
+### 2.1 Abstracción de Alto Nivel (Step-Back Architecture)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente as MCP Client / Agent / Playground
+    participant Auth as OAuth 2.1 Provider (OIDC)
+    participant MCP as FastMCP Server (mcps/company_tools)
+    participant API as Nexova Backend (services/api)
+    participant DB as Incidents / Inventory DB
+
+    Note over Cliente,MCP: Handshake & Discovery con Bearer Token
+    Cliente->>Auth: Solicita token con scopes (incidents:read, etc.)
+    Auth-->>Cliente: Access Token JWT
+    Cliente->>MCP: GET /tools/list (Auth Bearer JWT)
+    MCP->>MCP: Valida JWT y scopes con mcpauth
+    MCP-->>Cliente: Lista de Tools y Schemas JSON
+
+    Note over Cliente,DB: Ejecución de Tool (Ej: Incidents Status Update)
+    Cliente->>MCP: POST /tools/call incidents_update_status {id, status}
+    MCP->>MCP: Valida required_scopes=["incidents:write"]
+    MCP->>API: PATCH /api/incidents/{id}/status {status}
+    API->>DB: Actualiza estado y timestamp
+    API-->>MCP: IncidentModel actualizado
+    MCP-->>Cliente: ToolResult {status: "success", incident: {...}}
+
+    Note over Cliente,MCP: Intento Malicioso de Escritura en Inventario
+    Cliente->>MCP: POST /tools/call inventory_query {action: "delete" / "write"}
+    MCP-->>Cliente: ERROR 403: "Violación de Seguridad: Operación de solo lectura."
+```
+
+---
+
+### 2.2 Ciclos de Auto-Refinamiento (Self-Refinement Loop - 3 Ciclos)
+
+- **Ciclo 1: ¿Cómo garantizamos la compatibilidad con MCP Playground desde GitHub Codespaces?**
+  - *Refinamiento:* MCP Playground corre en el navegador del usuario y no puede alcanzar `localhost:8000` del contenedor remoto. Configuraremos el servidor MCP para escuchar en `0.0.0.0:8001` con transporte Streamable HTTP (SSE) y documentaremos el reenvío de puerto con visibilidad pública en Codespaces, configurando CORS permisivo para permitir el handshake desde el origen del Playground.
+- **Ciclo 2: ¿Cómo evitamos conflictos entre las dependencias y la estructura de ramas del monorepo?**
+  - *Refinamiento:* La rama actual `feature/mcp-oauth-tools` parte de `main`, pero los módulos del agente (`services/agent/`) fueron desarrollados en el hito anterior (`feature/langgraph-external-tools`, PR #29 pendiente de revisión). Incorporaremos ordenadamente los archivos de `services/agent/` mediante merge limpio o cherry-pick desde `feature/langgraph-external-tools` para que la migración del cliente LangGraph cuente con la base completa sin alterar los PRs abiertos #27, #28 y #29.
+- **Ciclo 3: ¿Qué pasa si el servidor OAuth externo no está disponible durante pruebas locales?**
+  - *Refinamiento:* Se configurará `mcpauth` para validar contra el emisor OIDC configurado en `.env`, y para desarrollo/testing unitario se creará un fixture con un mock local de JWKS / token generator para que los tests automatizados (`pytest`) se ejecuten de forma determinista y reproducible sin depender de red externa.
 
 ---
 
 ## 🗺️ Mapa de Trabajo por Fases (Roadmap)
 
-### Fase 1: Infraestructura Docker (Redis & Flower) y Dependencias
-- [x] **Paso 1.1 — Instalación de Dependencias con UV:**
-  - Instalar dependencias requeridas en el monorepo ejecutando: `uv add celery redis flower`.
-- [x] **Paso 1.2 — Configuración de Redis en `docker-compose.yml`:**
-  - Añadir el servicio `redis` utilizando la imagen oficial `redis:7-alpine`.
-  - Exponer el puerto `6379:6379`.
-  - Configurar comando de arranque con política `noeviction`: `redis-server --maxmemory-policy noeviction`.
-  - Asociar a la red `nexova-network`.
-- [x] **Paso 1.3 — Configuración de Flower en `docker-compose.yml`:**
-  - Añadir el servicio `flower` en `docker-compose.yml` expuesto en el puerto `5555:5555`.
-  - Configurar conexión al broker `redis://redis:6379/0`.
-  - Dependencia de servicio `depends_on: [redis]`.
-- [x] **Paso 1.4 — Variables de Entorno (`.env`):**
-  - Añadir variable `REDIS_URL="redis://localhost:6379/0"` (y `redis://redis:6379/0` para contenedores) con fallback seguro en código.
+### Fase 1: Configuración de Dependencias y Estructura de Proyecto
+- [ ] Incorporar los archivos del agente LangGraph desde `feature/langgraph-external-tools` a la rama `feature/mcp-oauth-tools`.
+- [ ] Instalar dependencias oficiales usando `uv add`:
+  - `uv add fastmcp mcpauth langchain-mcp-adapters`
+  - Verificar que `pyproject.toml` y `uv.lock` queden actualizados sin usar `pip`.
+- [ ] Crear el árbol de directorios para servidores MCP bajo `mcps/`:
+  - `mcps/__init__.py`
+  - `mcps/company_tools/__init__.py`
+  - `mcps/company_tools/server.py`
+  - `mcps/company_tools/auth.py`
+  - `mcps/company_tools/tools_incidents.py`
+  - `mcps/company_tools/tools_inventory.py`
+  - `mcps/company_tools/config.py`
 
+### Fase 2: Implementación de la Capa de Seguridad OAuth 2.1 (`mcpauth`)
+- [ ] Configurar `mcpauth.OAuthResourceServer` en `mcps/company_tools/auth.py`.
+- [ ] Exponer los metadatos de recurso protegido (`Protected Resource Metadata` según OAuth 2.1 / OIDC).
+- [ ] Configurar los scopes obligatorios:
+  - `incidents:read`: Lectura y consulta de incidentes.
+  - `incidents:write`: Creación y actualización de estado de incidentes.
+  - `inventory:read`: Consulta exclusiva de inventario.
+- [ ] Implementar middleware o decoradores para rechazar requests no autenticados (HTTP 401) y requests con scopes insuficientes (HTTP 403).
+- [ ] Definir el sistema de logging de auditoría para registrar cada intento de invocación (cliente, tool, parámetros, resultado).
 
----
+### Fase 3: Desarrollo de Herramientas del Negocio (FastMCP Tools)
+- [ ] Crear la instancia de `FastMCP` con soporte de transporte **Streamable HTTP (SSE)** escuchando en `0.0.0.0:8001`.
+- [ ] Implementar Tool 1: `incidents_get_status` (consulta de ticket por ID o coincidencia contra el backend existente).
+- [ ] Implementar Tool 2: `incidents_create` (creación de nuevo ticket con validación de categorías y campos del backend).
+- [ ] Implementar Tool 3: `incidents_update_status` (transición de ciclo de vida llamando específicamente a `PATCH /api/incidents/{id}/status`).
+- [ ] Implementar Tool 4: `inventory_query_stock` (consulta de productos, existencias y almacén).
+- [ ] Implementar **Guardia Estricta de Solo Lectura** en `tools_inventory.py`:
+  - Detección y rechazo proactivo de cualquier parámetro o payload de mutación (`write`, `update`, `delete`, `stock_delta`).
+  - Emisión de excepción explícita `PermissionDeniedError` con código y mensaje unificado.
+- [ ] Enriquecer el *Discovery* de cada tool con docstrings exhaustivos, descripciones de parámetros y tipos Pydantic claros para LLMs externos.
 
-### Fase 2: Modelo de Datos para Dead Letter Queue (DLQ)
-- [x] **Paso 2.1 — Definición DDL de `task_dlq`:**
-  - Crear tabla `task_dlq` con campos: `id` (UUID/TEXT PK), `task_id` (VARCHAR), `task_name` (VARCHAR), `arguments` (JSON/TEXT), `retry_count` (INTEGER), `error_message` (TEXT), `failed_at` (TIMESTAMPTZ/TEXT).
-- [x] **Paso 2.2 — Script de Migración SQL:**
-  - Crear migración en `infra/migrations/002_create_task_dlq.sql` compatible con PostgreSQL y SQLite.
-- [x] **Paso 2.3 — Helper de Persistencia en Base de Datos:**
-  - Implementar en `services/dlq_service.py` las funciones `ensure_dlq_table_exists()` y `record_dlq_failure(task_id, task_name, args, retry_count, error)`.
+### Fase 4: Validación y Verificación en MCP Playground
+- [ ] Iniciar el servidor backend (`uv run uvicorn services.api.main:app --port 8000`).
+- [ ] Iniciar el servidor MCP (`uv run python -m mcps.company_tools.server`).
+- [ ] Exponer el puerto `8001` de GitHub Codespaces con visibilidad pública (`Port Forwarding -> Port 8001 -> Port Visibility: Public`).
+- [ ] Obtener la URL pública reenviada de Codespaces (`https://<codespace-id>-8001.app.github.dev/sse`).
+- [ ] Conectar desde **MCP Playground** utilizando dicha URL pública.
+- [ ] Ejecutar flujo completo de prueba en Playground:
+  - Handshake y listado de herramientas (`tools/list`).
+  - Creación de ticket de incidencia (`incidents_create`).
+  - Actualización de estado del ticket (`incidents_update_status`).
+  - Consulta de stock de inventario (`inventory_query_stock`).
+  - Intento de escritura en inventario (verificar que el servidor responde con error controlado 403).
+- [ ] Capturar evidencias de ejecución y registrar logs de auditoría generados.
 
+### Fase 5: Migración del Agente LangGraph (`langchain-mcp-adapters`)
+- [ ] Actualizar el cliente del agente en `services/agent/` para conectarse al Servidor MCP mediante `MultiServerMCPClient` o `load_mcp_tools`.
+- [ ] En `services/agent/nodes.py`:
+  - Reemplazar el cuerpo de `incident_tool_node` para que despache la invocación hacia el cliente MCP en lugar de llamar directamente a `get_incident_ticket()`.
+  - Asegurar manejo defensivo de errores y timeouts de red hacia el servidor MCP (activando la ruta de fallback existente ante fallos).
+- [ ] En `services/agent/tools.py`:
+  - Marcar `get_incident_ticket()` como `@deprecated` o retirarla de la ruta activa para asegurar que no existan dos caminos hacia el Incidents Manager.
+- [ ] Validar que el nodo de enrutamiento autónomo (`classify_intent_node`) siga bifurcando correctamente entre `rag` y `incident_tool`.
 
----
-
-### Fase 3: Configuración del Módulo Celery y Tareas Asíncronas (`services/celery_app.py`)
-- [x] **Paso 3.1 — Inicialización de Celery App:**
-  - Crear `services/celery_app.py` configurando `broker_url` y `result_backend` desde `REDIS_URL`.
-  - Ajustar configuraciones de estabilidad: `task_acks_late=True` (ACK solo tras finalización exitosa), `worker_prefetch_multiplier=1`, `result_expires=86400` (24 horas).
-- [x] **Paso 3.2 — Implementación de la Tarea Asíncrona del Pipeline:**
-  - Definir `@celery_app.task(bind=True, max_retries=3, default_retry_delay=5)` para ejecutar `business_performance_flow(target_date)`.
-  - Configurar reintentos automáticos con backoff exponencial: `countdown = 2 ** self.request.retries * 5`.
-  - Capturar excepciones y registrar en Dead Letter Queue (`record_dlq_failure`) cuando `self.request.retries >= self.max_retries`.
-- [x] **Paso 3.3 — Tarea de Simulación para Pruebas (Failure / DLQ):**
-  - Crear tarea `@celery_app.task(bind=True, max_retries=3)` que simule fallos controlados para validar la transición a DLQ y los reintentos automáticos.
-
-
----
-
-### Fase 4: Refactorización de Endpoints en FastAPI (`services/reporting/routes.py` y `services/api/routes/tasks.py`)
-- [x] **Paso 4.1 — Conversión de `POST /reporting/trigger` a Asíncrono:**
-  - Modificar el endpoint para que invoque `run_pipeline_task.delay(target_date)`.
-  - Retornar código HTTP **`202 Accepted`** con payload `{"task_id": task.id, "status": "pending", "message": "Tarea encolada con éxito"}`.
-  - Medir latencia de respuesta para garantizar respuesta en menos de 200 ms.
-  - Proteger el endpoint mediante `Auth Guard Standard` (`Depends(get_current_user)`).
-- [x] **Paso 4.2 — Creación de Router de Tareas `services/api/routes/tasks.py`:**
-  - Implementar endpoint protegido `GET /tasks/{task_id}`.
-  - Consultar `AsyncResult(task_id)` desde Celery / Redis.
-  - Normalizar el estado retornado: `pending`, `started`, `success`, `failure`.
-  - Si el estado es `success`, incluir `result` en el payload JSON; si es `failure`, incluir mensaje de error.
-- [x] **Paso 4.3 — Registro del Router en `services/api/main.py`:**
-  - Incluir `app.include_router(tasks.router)`.
-
-
----
-
-<<<<<<< HEAD
-### ⚡ Fase 3: Optimización Dirigida y Refactorización Incremental
-> **Estado:** `[Completado]`
-
-- [x] **Paso 3.1:** Activar y seguir las directrices de las skills de optimización (`core-web-vitals`, `performance`, `web-perf`).
-- [x] **Paso 3.2:** Aplicar correcciones de **LCP y carga de recursos**:
-  - Implementar `next/image` con tamaños responsivos (`sizes`), formatos modernos y `priority` sólo en imágenes hero.
-  - Optimizar fuentes web (`font-display: swap`).
-  - *Commit dedicado:* `git commit -m "perf: optimizacion de imagenes y carga de fuentes para LCP"`.
-- [x] **Paso 3.3:** Aplicar correcciones de **CLS (Cumulative Layout Shift)**:
-  - Reservar espacio para elementos dinámicos e imágenes con aspect-ratio y dimensiones explícitas.
-  - *Commit dedicado:* `git commit -m "perf: eliminacion de layout shifts mediante dimensiones explicitas"`.
-- [x] **Paso 3.4:** Aplicar correcciones de **JavaScript y Reducción de Bundle**:
-  - Implementar imports dinámicos (`next/dynamic`) en componentes pesados fuera del viewport o modales diferidos.
-  - *Commit dedicado:* `git commit -m "perf: code splitting y carga diferida de componentes pesados"`.
-- [x] **Paso 3.5:** Implementar la refactorización de código duplicado:
-  - Extraer al menos un componente reutilizable o Custom Hook compartido.
-  - Integrar la abstracción en ambos lugares correspondientes y verificar que la funcionalidad se mantenga al 100% intacta.
-  - *Commit dedicado:* `git commit -m "refactor: extraccion e integracion de custom hook/componente reutilizable"`.
+### Fase 6: Suite de Pruebas Automatizadas y Red Teaming
+- [ ] Crear suite de tests unitarios e integrados en `tests/test_mcp_server.py`:
+  - Test de autenticación: verificación de rechazo 401 sin token.
+  - Test de autorización: verificación de rechazo 403 con scope inválido.
+  - Test de tools de incidentes: consulta, creación y `PATCH /api/incidents/{id}/status`.
+  - Test de inventario: consulta exitosa y rechazo explícito ante payload de escritura.
+  - Test de discovery: inspección de esquemas generados.
+- [ ] Crear tests de regresión para el agente en `tests/pipelines/test_agent_mcp_integration.py`:
+  - Verificar que el flujo del grafo ejecuta el nodo MCP sin romper los contratos de respuesta esperados.
+- [ ] Ejecutar suite completa con `uv run pytest tests/`.
 
 ---
 
-### 📈 Fase 4: Medición Final (After), `REPORT.md` y Validación Pre-Push
-> **Estado:** `[Completado]`
+## 💻 PACK 3: CODER (Especificación Técnica de Componentes)
 
-- [x] **Paso 4.1:** Ejecutar nuevamente Lighthouse bajo las mismas condiciones (mismas URLs, dispositivos Móvil y Escritorio).
-- [x] **Paso 4.2:** Guardar las nuevas capturas de pantalla con los resultados optimizados en `audit/after/`.
-- [x] **Paso 4.3:** Redactar el archivo `REPORT.md` en la raíz conteniendo:
-  - Tabla comparativa de métricas Antes vs. Después (Performance, LCP, CLS, FID/INP, TTFB).
-  - Resumen de cada optimización aplicada y análisis fáctico de cuál tuvo mayor impacto positivo.
-  - Conclusiones y recomendaciones para mantener el rendimiento a futuro.
-- [x] **Paso 4.4:** Auditoría de calidad de código y ausencia de regresiones:
-  - Ejecutar verificación de tipos (`npx tsc --noEmit`) y linting en ambos frontends.
-  - Comprobar que no existan errores en la consola del navegador ni funcionalidades rotas.
-- [x] **Paso 4.5 (Regla Inviolable de Git):** Detener ejecución y solicitar confirmación explícita al usuario antes de cualquier `git push`.
-=======
-### Fase 5: Suite de Pruebas Automatizadas (`tests/api/test_async_tasks.py`)
-- [x] **Paso 5.1 — Fixtures y Mocks Celery/Redis:**
-  - Configurar Celery en modo eager/in-memory para pruebas unitarias deterministas (`task_always_eager=True` para tests unitarios directos y mock de `AsyncResult`).
-- [x] **Paso 5.2 — Test 1: Inmediata Aceptación (`202 Accepted` < 200ms):**
-  - Validar que `POST /reporting/trigger` responde con `202`, `task_id` válido y tiempo de respuesta inferior a 200 ms.
-- [x] **Paso 5.3 — Test 2: Polling de Estado (`GET /tasks/{task_id}`):**
-  - Probar las transiciones de estado (`pending` → `started` → `success`) y validar la estructura JSON de respuesta.
-- [x] **Paso 5.4 — Test 3: Reintentos con Backoff y DLQ tras 3 Fallos:**
-  - Forzar 3 fallos consecutivos en una tarea mock y validar que se registra en la tabla `task_dlq` con `retry_count = 3` y mensaje de error.
-- [x] **Paso 5.5 — Test 4: Autenticación `Auth Guard Standard`:**
-  - Verificar que las peticiones sin token JWT a `/reporting/trigger` y `/tasks/{task_id}` son rechazadas con `401 Unauthorized`.
-- [x] **Paso 5.6 — Ejecución y Validación Pytest:**
-  - Ejecutar `uv run pytest tests/` y verificar 100% de tests pasando en verde.
+### 3.1 Contrato del Servidor MCP (`mcps/company_tools/server.py`)
 
+```python
+"""
+Servidor MCP independiente para herramientas corporativas de Nexova Solutions.
+Expone endpoints de gestión de incidentes y consulta de inventario vía Streamable HTTP.
+"""
+from fastmcp import FastMCP
+from mcps.company_tools.config import settings
+from mcps.company_tools.auth import configure_mcp_auth
+
+mcp = FastMCP(
+    name="Nexova Company Tools MCP Server",
+    description="Servidor oficial de herramientas operativas de Nexova Solutions.",
+    version="1.0.0",
+)
+
+# Configuración de OAuth 2.1 Resource Server con mcpauth
+configure_mcp_auth(mcp)
+```
+
+### 3.2 Contrato de la Tool de Incidentes (Transición de Estado)
+
+```python
+@mcp.tool(
+    name="incidents_update_status",
+    description=(
+        "Actualiza el estado en el ciclo de vida de una incidencia existente en Nexova Solutions. "
+        "Utiliza obligatoriamente el endpoint de transición de estado PATCH /api/incidents/{id}/status. "
+        "Estados permitidos: 'open', 'in_progress', 'resolved', 'closed'."
+    ),
+)
+async def incidents_update_status(ticket_id: str, new_status: str) -> dict:
+    ...
+```
+
+### 3.3 Contrato de la Tool de Inventario con Guardia de Solo Lectura
+
+```python
+@mcp.tool(
+    name="inventory_query_stock",
+    description=(
+        "Consulta el catálogo y niveles de stock de productos e inventario de Nexova Solutions. "
+        "Operación estrictamente de SOLO LECTURA. Cualquier intento de modificación será rechazado."
+    ),
+)
+async def inventory_query_stock(product_id: str | None = None, category: str | None = None, **kwargs) -> dict:
+    if kwargs.get("operation") in ["write", "update", "delete"] or "quantity" in kwargs:
+        raise PermissionDeniedError("Operación de escritura no permitida: el inventario es de solo lectura por diseño.")
+    ...
+```
 
 ---
 
-### Fase 6: Documentación del Worker, Verificación de Flower y Entrega Git (PACK 4: AUDITOR)
-- [x] **Paso 6.1 — Documentación del Worker en `README.md`:**
-  - Documentar comandos exactos para levantar el worker: `uv run celery -A services.celery_app worker --loglevel=info`.
-  - Documentar cómo detenerlo y cómo verificar conectividad con Redis.
-- [x] **Paso 6.2 — Checklist de Pre-Entrega:**
-  - [x] Redis corre en Docker y workers se conectan sin errores.
-  - [x] Endpoint responde `202 Accepted` en < 200ms.
-  - [x] `GET /tasks/{task_id}` refleja estados canónicos.
-  - [x] Reintentos configurados con backoff.
-  - [x] Fallos tras 3 intentos registrados en tabla `task_dlq`.
-  - [x] Workers corren desacoplados de FastAPI.
-  - [x] Mensajes encolados contienen únicamente identificadores/referencias.
-  - [x] Flower accesible en puerto 5555.
-- [x] **Paso 6.3 — Preparación del Pull Request:**
-  - Documentar justificación del endpoint seleccionado (`POST /reporting/trigger`), captura de Flower y fragmentos de logs.
-  - Etiqueta `async-tasks` asignada.
-- [x] **Paso 6.4 — Protocolo de Control Git:**
-  - Solicitar consentimiento explícito al usuario antes de ejecutar `git push`.
+## 🛡️ PACK 4: AUDITOR (Seguridad, Red Teaming y Protocolo Git)
 
->>>>>>> cbb819f4d1f3953d1ea6ce06036e94990e628864
+### 4.1 Escenarios de Ataque y Resiliencia (Red Teaming)
+
+| Vector de Ataque / Caso Límite | Comportamiento Esperado | Verificación |
+| :--- | :--- | :--- |
+| **Ataque 1: Solicitud sin cabecera Bearer** | Rechazo inmediato con HTTP 401 Unauthorized | Test unitario con cliente anónimo |
+| **Ataque 2: Token con scope insuficiente** | Rechazo con HTTP 403 Forbidden y detalle del scope faltante | Invocación con scope `inventory:read` hacia `incidents_create` |
+| **Ataque 3: Inyección de mutación en Inventario** | Rechazo con 403 / ToolError explícito y log de seguridad | Invocación pasando parámetros de escritura |
+| **Ataque 4: Transición de estado inválida** | Validación de esquema devuelve HTTP 422 / Error descriptivo | Intento de asignar estado no reconocido en Incidents Manager |
+| **Ataque 5: Caída de la API backend** | Servidor MCP devuelve error controlado sin caerse ni fugar stack traces | Simulación de desconexión del backend |
+
+---
+
+### 4.2 Regla Inviolable de Control de Git
+
+> [!CAUTION]
+> **RECORDATORIO OBLIGATORIO:** Queda estrictamente prohibido ejecutar `git push` de forma autónoma. Al finalizar todas las fases de implementación y testing, se solicitará consentimiento explícito al usuario en chat.
 
 ---
 
 ## ⚙️ Métodos Aplicados (Code Refinement Suite)
 
-1. **Tree of Thoughts (ToT - PACK 1: ARCHITECT):**
-   Se contrastaron tres alternativas de arquitectura (FastAPI BackgroundTasks en proceso, RabbitMQ/Mongo pesado y Redis/Celery/Flower desacoplado). Se descartó BackgroundTasks por falta de persistencia y pérdida de tareas ante reinicios de la API, y RabbitMQ por complejidad innecesaria. Se seleccionó Redis como broker/backend y Celery con workers independientes por su ligereza, tolerancia a fallos y soporte nativo en el monorepo.
+Para dar cumplimiento formal al estándar de excelencia metodológica exigido por la suite:
 
-2. **Step-Back Prompting & Domain Abstraction (PACK 2: PLANNER):**
-   Se interiorizó el patrón fundamental: *"encolar y ejecutar son responsabilidades de dos procesos distintos"*. Los mensajes se mantendrán ultraligeros (solo parámetros escalares como `target_date`), garantizando que la memoria de Redis permanezca acotada y que el worker sea responsable de hidratar los datos necesarios.
+1. **Tree of Thoughts (ToT):** Se evaluaron formalmente en el Pack 1 tres alternativas de transporte (stdio, SSE, WebSockets), tres alternativas de autenticación (FastMCP auth, Custom Middleware, `mcpauth`) y dos estrategias de migración de clientes para el agente LangGraph.
+2. **Step-Back Prompting:** Se abstrajo la interacción en un modelo de capas desacopladas (Cliente -> OAuth Resource Server -> Servidor MCP -> APIs de Negocio -> TinyDB/SQLite), asegurando que el servidor MCP funcione como fachada agnóstica para cualquier agente externo.
+3. **Self-Refinement Loop (3 Ciclos):** Se llevaron a cabo 3 iteraciones de crítica constructiva resolviendo la accesibilidad pública en Codespaces, la compatibilidad con las ramas de Git del monorepo y la resiliencia en pruebas unitarias mediante mocks de OIDC.
+4. **Principio de Mínimo Privilegio y Red Teaming:** Se definieron matrices de scopes granulares y 5 escenarios de prueba de penetración defensiva para verificar la inviolabilidad de la herramienta de inventario y la autenticación.
+5. **Chain of Verification (CoVe) & TDD:** Toda la implementación de código y schemas se contrastará paso a paso contra los contratos existentes en `services/api/routes/incidents.py` y `services/api/routes/inventory.py`, validándose con `uv run pytest`.
 
-3. **Chain of Verification (CoVe) & TDD (PACK 3: CODER):**
-   Antes de modificar los endpoints de negocio, se diseñarán fixtures para aislar el result backend y simular estados de Celery (`AsyncResult`). Se verificará empíricamente la latencia inferior a 200 ms y la persistencia de fallos en `task_dlq`.
-
-4. **Red Teaming & Resilience Audit (PACK 4: AUDITOR):**
-   Se auditará el comportamiento del sistema cuando el broker se satura o desconecta temporalmente, validando que el worker reintente con backoff exponencial sin sobrecargar la CPU y que al superar el umbral de 3 fallos la tarea transicione limpiamente a la Dead Letter Queue sin zombis ni bloqueos. Se acatará estrictamente la regla de no auto-push.

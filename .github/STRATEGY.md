@@ -1,110 +1,91 @@
-# Colas de Mensajes y Tareas Asíncronas
+# README
+Servidor MCP: Conectando tu Agente con las Herramientas de la Empresa
+Por [@marcogonzalo](https://github.com/marcogonzalo) y [otros contribuidores](https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo/graphs/contributors) en [4Geeks Academy](https://4geeksacademy.com/)
+[build by developers](https://4geeks.com/) [4Geeks Academy](https://x.com/4geeksacademy)
+These instructions are [available in English](https://learn.4geeks.com/es/main-cohort/spain-aie-pt-3/syllabus/agentic-engineering/project/README.md).
 
 ## 🎯 Tu reto
+📌 Estás construyendo sobre tu copia del [monorepo](https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo) de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.
 
-> 📌 **Estás construyendo sobre tu copia del monorepo** de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.
+### Sobre los MCP Servers
+Un MCP Server expone las capacidades de un sistema (herramientas, recursos, prompts) mediante un protocolo estándar que cualquier agente compatible puede descubrir y consumir, sin acoplarse al código interno de tu backend. A diferencia de las tools que ya conectaste directamente al grafo de tu agente, un MCP Server puede ser reutilizado por múltiples clientes — otros agentes, otros equipos, otras compañías del ecosistema — siempre que se autentiquen correctamente. Por eso la autenticación y el principio de mínimo privilegio no son un detalle: un servidor MCP sin auth es una vulnerabilidad real desde el primer día.
 
-Tu empresa tiene una API en producción y un pipeline de datos que ya funciona. Pero hay operaciones que aún bloquean el ciclo de request-response: procesar un lote de registros, generar un informe, enviar notificaciones masivas. Mientras esas operaciones corren, la API no responde a otros usuarios. Tu tech lead ha abierto el siguiente ticket:
+Tu agente ya sabe llamar herramientas directamente. Ahora tu tech lead ha abierto un ticket pidiendo que esas capacidades dejen de estar hardcodeadas dentro del grafo y se expongan como un servicio independiente, reutilizable y protegido por OAuth — y que el propio agente deje de llamar al Incidents Manager de forma directa para consumirlo a través del servidor MCP.
 
----
+**De:** Tu tech lead  
+**Para:** Tu squad  
+**Asunto:** RFP — Servidor MCP para herramientas de la compañía  
 
-### Ticket #DEV-55 — Cola de tareas asíncronas con Redis y Celery
+El agente que construimos ya consulta el Incidents Manager desde dentro del grafo, pero cualquier integración futura (otro agente, otro equipo, un partner externo) tendría que reimplementar esas mismas llamadas. Necesitamos exponerlas como un MCP Server independiente, autenticado con OAuth, para que cualquier cliente MCP autorizado pueda:
+1. Gestionar tickets del Incidents Manager (crear, actualizar, consultar estado).
+2. Consultar —nunca editar— los datos del inventario.
 
-Necesitamos desacoplar las operaciones pesadas de la API. Cuando un endpoint reciba una solicitud que implique trabajo de larga duración, debe encolar la tarea y devolver inmediatamente un `task_id` al cliente. Un worker independiente procesa la cola. El cliente puede consultar el estado de su tarea en cualquier momento.
+El servidor no debe dar más permisos de los estrictamente necesarios para cada tool. Documenten bien el discovery: cualquier cliente debe poder entender qué puede hacer el servidor sin necesitar contexto humano adicional.
 
-#### Criterios de aceptación:
-- **Redis corre como broker en Docker.** La API y los workers se conectan al mismo broker.
-- **Al menos una operación existente en tu API —la que más tarde en responder— se convierte en tarea asíncrona mediante Celery.**
-- **El endpoint que recibe la solicitud devuelve `202 Accepted` con un `task_id` inmediatamente**, sin esperar a que la tarea termine.
-- **Existe un endpoint `GET /tasks/{task_id}` que devuelve el estado actual de la tarea (`pending`, `started`, `success`, `failure`) y el resultado cuando esté disponible.**
-- **Si una tarea falla hasta tres veces, pasa a una Dead Letter Queue (DLQ).** El fallo queda registrado con `task_id`, número de intento y mensaje de error.
-- **Los workers corren como procesos separados**, no dentro del proceso de FastAPI.
-- **Flower está levantado y accesible** para monitorear la cola durante el desarrollo.
+Y no dejen la migración a medias: quiero que el propio agente reemplace su tool directa del Incidents Manager por una llamada al MCP Server como cliente. Si el agente sigue llamando al Incidents Manager por fuera del servidor, el ticket no está resuelto.
 
----
+Los criterios de aceptación están en el checklist. Avísenme cuando esté listo para probarlo desde un cliente MCP.
 
-## 📖 Conocimiento complementario — El patrón Productor / Consumidor
-
-El cambio conceptual clave de este proyecto es entender que **encolar una tarea y ejecutar una tarea son responsabilidades de dos procesos distintos.**
-
-```text
-Cliente → API (Productor) → Redis (Broker) → Worker (Consumidor) → Resultado
-```
-
-- **Productor:** la API recibe la solicitud, crea un mensaje y lo deposita en la cola. Devuelve inmediatamente.
-- **Broker:** Redis actúa como intermediario persistente. Si el worker se cae, los mensajes no se pierden.
-- **Consumidor (Worker):** un proceso independiente que escucha la cola, toma mensajes de uno en uno y los procesa.
-
-Tres reglas que aplican siempre en este patrón:
-
-1. **Los mensajes son ligeros.** Nunca pongas en el mensaje un blob completo (imagen, documento, lote de datos). Pasa el `id` o la ruta — el worker lo recupera él mismo.
-2. **ACK solo tras éxito.** El mensaje se confirma como procesado únicamente cuando el worker termina correctamente. Si el worker falla antes, el mensaje vuelve a la cola para reintento.
-3. **Toda tarea tiene timeout.** Un worker que no termina nunca bloquea el pool. Define siempre un tiempo máximo de ejecución.
-
----
+Como parte del reto, tu implementación debe resolver — sin que se te diga explícitamente en un checklist — las siguientes decisiones de diseño:
+* Qué transporte usar (stdio vs. Streamable HTTP) según si el servidor se consume localmente o por múltiples clientes remotos, y qué implica esa elección para la autenticación.
+* Cómo estructurar el sistema de permisos para que la tool de inventario sea, por diseño, de solo lectura — no basta con "no implementar" el endpoint de escritura, el servidor debe rechazar explícitamente cualquier intento.
+* Qué información exponer en el discovery (nombres, descripciones y esquemas de las tools) para que un agente externo, sin contexto humano previo, entienda qué puede y qué no puede hacer.
+* Cómo reemplazar, dentro del grafo del agente, el nodo que llamaba directamente al Incidents Manager por tools del MCP Server vía `langchain-mcp-adapters` — sin romper el enrutamiento entre RAG y tools que ya tenías funcionando.
 
 ## 🌱 Cómo Empezar el Proyecto
+1. Ubícate en tu copia del [monorepo de la compañía](https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo) (si aún no tienes tu propio fork, créalo antes de continuar).
+2. Crea una rama nueva: `git switch -c feature/mcp-oauth-tools`.
+3. Trabaja sobre el backend del Incidents Manager y del módulo de inventario que ya construiste en hitos anteriores — el MCP Server se apoya en esos servicios, no los reemplaza.
+4. Instala las dependencias necesarias con `uv add` (por ejemplo, `fastmcp`, `mcpauth`, `langchain-mcp-adapters`) — nunca uses `pip install` directamente en este monorepo.
+5. Crea el servidor MCP dentro de la carpeta `mcps/` del monorepo (no bajo `services/`).
+6. Cablea OAuth con [MCP Auth](https://mcp-auth.dev/) (paquete Python `mcpauth`) — OAuth 2.1 / OIDC listo para usar en servidores MCP como resource server. No uses las helpers de auth integradas de FastMCP; usa MCP Auth para Protected Resource Metadata, validación de JWT bearer y scopes.
+7. Ubica el nodo del agente que hoy llama directamente al Incidents Manager — es el punto que vas a migrar para que consuma el nuevo MCP Server como cliente en lugar de llamar la API por fuera de él.
 
-1. Añade Redis a tu `docker-compose.yml` como servicio broker. Usa la imagen oficial y exponla en el puerto estándar.
-2. Instala las dependencias necesarias con `uv add celery redis flower`.
-3. Crea el módulo Celery en tu monorepo (`services/celery_app.py` o similar) y configúralo para apuntar a Redis como broker y backend de resultados.
-4. Identifica en tu API el endpoint o la operación que más tarda en responder — ese es el candidato a convertir en tarea asíncrona.
-5. Levanta un worker con `celery -A services.celery_app worker` y verifica que se conecta al broker antes de modificar ningún endpoint.
+
 
 ---
 
 ## 💻 Qué Debes Hacer
 
-### Infraestructura
-- [ ] Redis añadido a `docker-compose.yml` con imagen oficial, puerto `6379` expuesto y política de memoria `noeviction`.
-- [ ] Flower añadido a `docker-compose.yml` como servicio de monitoreo, accesible en el puerto `5555`.
-- [ ] La API y los workers se conectan al mismo Redis. La URL de conexión se lee de una variable de entorno (`REDIS_URL`).
+### Servidor MCP
+- [ ] Implementar el MCP Server en Python bajo `mcps/` usando FastMCP (u otro SDK MCP equivalente).
+- [ ] **Implementar autenticación OAuth con MCP Auth (`mcpauth`)** — monta Protected Resource Metadata, valida JWTs bearer contra un proveedor OAuth 2.1 / OIDC compatible y rechaza el acceso sin autenticar. **No** uses la capa OAuth/auth integrada de FastMCP en este proyecto.
+- [ ] Exponer al menos una tool para gestionar tickets del Incidents Manager (crear, actualizar y consultar estado).
+- [ ] Exponer al menos una tool de **solo consulta** sobre el inventario — cualquier intento de modificación debe ser rechazado explícitamente por el servidor, no simplemente omitido.
+- [ ] Documentar cada tool con nombre, descripción y esquema de entrada/salida suficientes para que un agente externo la descubra sin contexto humano adicional (`--help`-equivalente vía discovery de MCP).
 
-### Módulo Celery (`services/`)
-- [ ] Crear la instancia de Celery con Redis como broker y como result backend.
-- [ ] Definir al menos una tarea asíncrona (`@app.task`) que encapsule la operación pesada identificada en tu API.
-- [ ] Configurar reintentos automáticos con `max_retries=3` y backoff exponencial (`countdown` creciente entre intentos).
-- [ ] Implementar una Dead Letter Queue: cuando una tarea supera `max_retries`, registrar en base de datos el `task_id`, número de intento, error y timestamp.
+> ⚠️ **IMPORTANTE:** Los nombres de campos, IDs de entidad y valores de dominio en tu implementación deben coincidir con las APIs de incidencias e inventario que ya construiste. Una implementación genérica que ignore tus servicios existentes no será aceptada. Los cambios de estado deben pasar por el endpoint de ciclo de vida del Incidents Manager (`PATCH /api/incidents/{id}/status`), no por un `PATCH` genérico sobre el recurso de incidencia. Un MCP Server sin OAuth vía MCP Auth no será aceptado.
 
-### Endpoints de la API
-- [ ] El endpoint que antes ejecutaba la operación pesada ahora encola la tarea y devuelve `202 Accepted` con `{"task_id": "..."}` de forma inmediata.
-- [ ] Crear el endpoint `GET /tasks/{task_id}` que consulta el estado de la tarea en Redis y devuelve `{"task_id": "...", "status": "...", "result": ...}`.
-- [ ] El campo `status` refleja los estados reales de Celery: `pending`, `started`, `success`, `failure`.
+### Autenticación y seguridad
+- [ ] Proteger el servidor con **OAuth** vía **MCP Auth** — ningún cliente sin access token válido puede listar ni invocar tools. Esto es obligatorio: el MCP Server no debe exponer herramientas de la compañía sin auth. Prefiere MCP Auth frente a la auth integrada de FastMCP para alinearte con la especificación de autorización de MCP (modo resource server, scopes, OIDC agnóstico al proveedor).
+- [ ] Aplicar el principio de mínimo privilegio: cada tool solo tiene acceso a los datos y operaciones que necesita para cumplir su función (enforce scopes con `required_scopes` de MCP Auth cuando aplique).
+- [ ] Definir y documentar los códigos de error y de salida esperados ante fallos de autenticación, autorización o validación (no un genérico "error").
+- [ ] Registrar en logs cada invocación de tool (qué tool, qué cliente, qué resultado) para trazabilidad.
 
-### Worker
-- [ ] El worker corre como proceso independiente (no dentro del proceso de FastAPI).
-- [ ] El worker está documentado en el README del monorepo: cómo levantarlo, cómo detenerlo.
+### Validación (MCP Playground)
+- [ ] Primero, prueba tu servidor MCP en **MCP Playground**. Desde **GitHub Codespaces**, expón/reenvía el puerto del servidor MCP (visibilidad pública) y pega la **URL reenviada de Codespaces** en Playground — `localhost` solo no funciona desde ese sitio. Conéctate y ejecuta al menos un flujo completo por cada tool expuesta.
+- [ ] Probar y documentar el comportamiento del servidor ante un intento de escritura sobre la tool de inventario (debe fallar de forma controlada y explicable).
 
-### Observabilidad
-- [ ] Cada tarea registra en el log: `task_id`, intento, estado resultante y duración de la ejecución.
-- [ ] Los fallos registran adicionalmente el mensaje de error completo.
-- [ ] Flower está accesible y muestra las tareas encoladas, en proceso y completadas.
+### Migración del agente
+- [ ] Conectar el agente LangGraph que ya construiste al MCP Server usando `langchain-mcp-adapters`: reemplaza el nodo que llamaba directamente al Incidents Manager por tools cargadas desde el MCP Server.
+- [ ] Eliminar (o dejar explícitamente deprecada y sin uso) la implementación anterior de la tool directa — el agente no debe tener dos caminos posibles hacia el Incidents Manager.
+- [ ] Confirmar que el enrutamiento existente entre RAG y tools sigue funcionando igual que antes, ahora con el nuevo nodo cliente MCP en el lugar del anterior.
+
 
 ---
 
-## ✅ Qué Evaluaremos
-
-- [ ] **Redis corre en Docker** y los workers se conectan a él sin errores de configuración.
-- [ ] **El endpoint modificado devuelve `202 Accepted` con `task_id` en menos de 200ms**, independientemente de la duración de la tarea.
-- [ ] **`GET /tasks/{task_id}` devuelve el estado correcto** en cada fase del ciclo de vida de la tarea.
-- [ ] **Los reintentos automáticos están configurados con backoff:** no se reintenta inmediatamente tras un fallo.
-- [ ] **Tras tres fallos consecutivos, la tarea aparece en la DLQ** con `task_id`, número de intento y mensaje de error registrados en base de datos.
-- [ ] **El worker es un proceso separado:** detener la API no detiene el worker ni pierde mensajes en cola.
-- [ ] **Los mensajes en cola contienen solo identificadores o referencias** — ningún payload de datos voluminosos.
-- [ ] **Flower está levantado y muestra al menos una tarea completada y una fallida** durante la demostración.
+## ✅ Qué Vamos a Evaluar
+- [ ] El servidor MCP vive bajo `mcps/`, levanta correctamente y expone sus tools mediante el mecanismo de discovery estándar de MCP.
+- [ ] Un cliente sin access token OAuth válido no puede listar ni ejecutar ninguna tool.
+- [ ] La tool de gestión de tickets crea, actualiza el estado vía `PATCH /api/incidents/{id}/status` y consulta contra el Incidents Manager real de la compañía.
+- [ ] La tool de inventario responde correctamente a consultas y rechaza explícitamente cualquier operación de escritura.
+- [ ] Cada tool tiene una descripción y un esquema claros, verificables desde el propio discovery del servidor sin leer el código fuente.
+- [ ] Los errores de autenticación, autorización y validación devuelven códigos y mensajes distintos entre sí.
+- [ ] Existe al menos un log por invocación de tool con cliente, tool y resultado.
+- [ ] El agente ya no llama al Incidents Manager de forma directa: toda interacción pasa por el MCP Server como cliente.
+- [ ] MCP Playground se usó con la **URL pública reenviada de Codespaces** (no localhost).
 
 ---
 
 ## 📦 Cómo Entregar
-
-1. Asegúrate de que todos los ítems del checklist estén completados.
-2. Haz push de tu rama al repositorio.
-3. Abre un **Pull Request** desde tu rama hacia `main`.
-4. En el cuerpo del PR incluye:
-   - El endpoint seleccionado para convertir en tarea asíncrona y la justificación de esa elección.
-   - Una captura de Flower mostrando al menos una tarea completada y una en la DLQ.
-   - El fragmento de log de una ejecución con reintento.
-5. Añade la etiqueta `async-tasks` al PR antes de enviarlo a revisión.
-
-
-
+Sigue el flujo estándar de entrega del monorepo: haz push de tu rama, abre un Pull Request hacia tu fork y describe en la descripción del PR qué transporte elegiste y por qué. Avisa a tu tech lead cuando el servidor esté listo para probarse desde un cliente MCP externo.
