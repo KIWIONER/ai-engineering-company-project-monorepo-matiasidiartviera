@@ -124,11 +124,11 @@ sequenceDiagram
 ## 🗺️ Mapa de Trabajo por Fases (Roadmap)
 
 ### Fase 1: Configuración de Dependencias y Estructura de Proyecto
-- [ ] Incorporar los archivos del agente LangGraph desde `feature/langgraph-external-tools` a la rama `feature/mcp-oauth-tools`.
-- [ ] Instalar dependencias oficiales usando `uv add`:
+- [x] Incorporar los archivos del agente LangGraph desde `feature/langgraph-external-tools` a la rama `feature/mcp-oauth-tools`.
+- [x] Instalar dependencias oficiales usando `uv add`:
   - `uv add fastmcp mcpauth langchain-mcp-adapters`
   - Verificar que `pyproject.toml` y `uv.lock` queden actualizados sin usar `pip`.
-- [ ] Crear el árbol de directorios para servidores MCP bajo `mcps/`:
+- [x] Crear el árbol de directorios para servidores MCP bajo `mcps/`:
   - `mcps/__init__.py`
   - `mcps/company_tools/__init__.py`
   - `mcps/company_tools/server.py`
@@ -138,59 +138,59 @@ sequenceDiagram
   - `mcps/company_tools/config.py`
 
 ### Fase 2: Implementación de la Capa de Seguridad OAuth 2.1 (`mcpauth`)
-- [ ] Configurar `mcpauth.OAuthResourceServer` en `mcps/company_tools/auth.py`.
-- [ ] Exponer los metadatos de recurso protegido (`Protected Resource Metadata` según OAuth 2.1 / OIDC).
-- [ ] Configurar los scopes obligatorios:
+- [x] Configurar `mcpauth.OAuthResourceServer` en `mcps/company_tools/auth.py`.
+- [x] Exponer los metadatos de recurso protegido (`Protected Resource Metadata` según OAuth 2.1 / OIDC).
+- [x] Configurar los scopes obligatorios:
   - `incidents:read`: Lectura y consulta de incidentes.
   - `incidents:write`: Creación y actualización de estado de incidentes.
   - `inventory:read`: Consulta exclusiva de inventario.
-- [ ] Implementar middleware o decoradores para rechazar requests no autenticados (HTTP 401) y requests con scopes insuficientes (HTTP 403).
-- [ ] Definir el sistema de logging de auditoría para registrar cada intento de invocación (cliente, tool, parámetros, resultado).
+- [x] Implementar middleware o decoradores para rechazar requests no autenticados (HTTP 401) y requests con scopes insuficientes (HTTP 403).
+- [x] Definir el sistema de logging de auditoría para registrar cada intento de invocación (cliente, tool, parámetros, resultado).
 
 ### Fase 3: Desarrollo de Herramientas del Negocio (FastMCP Tools)
-- [ ] Crear la instancia de `FastMCP` con soporte de transporte **Streamable HTTP (SSE)** escuchando en `0.0.0.0:8001`.
-- [ ] Implementar Tool 1: `incidents_get_status` (consulta de ticket por ID o coincidencia contra el backend existente).
-- [ ] Implementar Tool 2: `incidents_create` (creación de nuevo ticket con validación de categorías y campos del backend).
-- [ ] Implementar Tool 3: `incidents_update_status` (transición de ciclo de vida llamando específicamente a `PATCH /api/incidents/{id}/status`).
-- [ ] Implementar Tool 4: `inventory_query_stock` (consulta de productos, existencias y almacén).
-- [ ] Implementar **Guardia Estricta de Solo Lectura** en `tools_inventory.py`:
+- [x] Crear la instancia de `FastMCP` con soporte de transporte **Streamable HTTP (SSE)** escuchando en `0.0.0.0:8001`.
+- [x] Implementar Tool 1: `incidents_get_status` (consulta de ticket por ID o coincidencia contra el backend existente).
+- [x] Implementar Tool 2: `incidents_create` (creación de nuevo ticket con validación de categorías y campos del backend).
+- [x] Implementar Tool 3: `incidents_update_status` (transición de ciclo de vida llamando específicamente a `PATCH /api/incidents/{id}/status`).
+- [x] Implementar Tool 4: `inventory_query_stock` (consulta de productos, existencias y almacén).
+- [x] Implementar **Guardia Estricta de Solo Lectura** en `tools_inventory.py`:
   - Detección y rechazo proactivo de cualquier parámetro o payload de mutación (`write`, `update`, `delete`, `stock_delta`).
   - Emisión de excepción explícita `PermissionDeniedError` con código y mensaje unificado.
-- [ ] Enriquecer el *Discovery* de cada tool con docstrings exhaustivos, descripciones de parámetros y tipos Pydantic claros para LLMs externos.
+- [x] Enriquecer el *Discovery* de cada tool con docstrings exhaustivos, descripciones de parámetros y tipos Pydantic claros para LLMs externos.
 
 ### Fase 4: Validación y Verificación en MCP Playground
-- [ ] Iniciar el servidor backend (`uv run uvicorn services.api.main:app --port 8000`).
-- [ ] Iniciar el servidor MCP (`uv run python -m mcps.company_tools.server`).
-- [ ] Exponer el puerto `8001` de GitHub Codespaces con visibilidad pública (`Port Forwarding -> Port 8001 -> Port Visibility: Public`).
-- [ ] Obtener la URL pública reenviada de Codespaces (`https://<codespace-id>-8001.app.github.dev/sse`).
-- [ ] Conectar desde **MCP Playground** utilizando dicha URL pública.
-- [ ] Ejecutar flujo completo de prueba en Playground:
+- [x] Iniciar el servidor backend (`uv run uvicorn services.api.main:app --port 8000`).
+- [x] Iniciar el servidor MCP (`uv run python -m mcps.company_tools.server`).
+- [x] Exponer el puerto `8001` de GitHub Codespaces con visibilidad pública (`Port Forwarding -> Port 8001 -> Port Visibility: Public`).
+- [x] Obtener la URL pública reenviada de Codespaces (`https://<codespace-id>-8001.app.github.dev/sse`).
+- [x] Conectar desde **MCP Playground** utilizando dicha URL pública.
+- [x] Ejecutar flujo completo de prueba en Playground:
   - Handshake y listado de herramientas (`tools/list`).
   - Creación de ticket de incidencia (`incidents_create`).
   - Actualización de estado del ticket (`incidents_update_status`).
   - Consulta de stock de inventario (`inventory_query_stock`).
   - Intento de escritura en inventario (verificar que el servidor responde con error controlado 403).
-- [ ] Capturar evidencias de ejecución y registrar logs de auditoría generados.
+- [x] Capturar evidencias de ejecución y registrar logs de auditoría generados.
 
 ### Fase 5: Migración del Agente LangGraph (`langchain-mcp-adapters`)
-- [ ] Actualizar el cliente del agente en `services/agent/` para conectarse al Servidor MCP mediante `MultiServerMCPClient` o `load_mcp_tools`.
-- [ ] En `services/agent/nodes.py`:
+- [x] Actualizar el cliente del agente en `services/agent/` para conectarse al Servidor MCP mediante `MultiServerMCPClient` o `load_mcp_tools`.
+- [x] En `services/agent/nodes.py`:
   - Reemplazar el cuerpo de `incident_tool_node` para que despache la invocación hacia el cliente MCP en lugar de llamar directamente a `get_incident_ticket()`.
   - Asegurar manejo defensivo de errores y timeouts de red hacia el servidor MCP (activando la ruta de fallback existente ante fallos).
-- [ ] En `services/agent/tools.py`:
+- [x] En `services/agent/tools.py`:
   - Marcar `get_incident_ticket()` como `@deprecated` o retirarla de la ruta activa para asegurar que no existan dos caminos hacia el Incidents Manager.
-- [ ] Validar que el nodo de enrutamiento autónomo (`classify_intent_node`) siga bifurcando correctamente entre `rag` y `incident_tool`.
+- [x] Validar que el nodo de enrutamiento autónomo (`classify_intent_node`) siga bifurcando correctamente entre `rag` y `incident_tool`.
 
 ### Fase 6: Suite de Pruebas Automatizadas y Red Teaming
-- [ ] Crear suite de tests unitarios e integrados en `tests/test_mcp_server.py`:
+- [x] Crear suite de tests unitarios e integrados en `tests/test_mcp_server.py`:
   - Test de autenticación: verificación de rechazo 401 sin token.
   - Test de autorización: verificación de rechazo 403 con scope inválido.
   - Test de tools de incidentes: consulta, creación y `PATCH /api/incidents/{id}/status`.
   - Test de inventario: consulta exitosa y rechazo explícito ante payload de escritura.
   - Test de discovery: inspección de esquemas generados.
-- [ ] Crear tests de regresión para el agente en `tests/pipelines/test_agent_mcp_integration.py`:
+- [x] Crear tests de regresión para el agente en `tests/pipelines/test_agent_mcp_integration.py`:
   - Verificar que el flujo del grafo ejecuta el nodo MCP sin romper los contratos de respuesta esperados.
-- [ ] Ejecutar suite completa con `uv run pytest tests/`.
+- [x] Ejecutar suite completa con `uv run pytest tests/`.
 
 ---
 
