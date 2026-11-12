@@ -16,7 +16,11 @@ El servidor estará protegido mediante **OAuth 2.1 / OIDC** utilizando exclusiva
 
 Adicionalmente, se migrará el agente de soporte LangGraph (`services/agent/`) para que consuma estas capacidades a través de **`langchain-mcp-adapters`**, eliminando el acoplamiento directo previo con la base de datos o APIs internas sin romper el enrutamiento autónomo existente entre RAG y Tools.
 
----
+### 3. Nodos y Aristas Condicionales (`services/agent/nodes.py`, `services/agent/graph.py`):
+- `classify_intent_node`: Enruta autónomamente según la pregunta del usuario (`incident_tool` vs `retrieve`).
+- `incident_tool_node`: Ejecuta la consulta protegido con `try...except` ante `TimeoutError` o caídas.
+- `format_tool_answer_node`: Redacta la respuesta basada en datos fácticos reales del ticket.
+- `tool_fallback_node`: Ruta honesta ante tickets inexistentes o fallos de red (*"No pude confirmar el estado de ese ticket ahora mismo"*).
 
 ## 📐 PACK 1: ARCHITECT (Ideación y Decisión Técnica)
 

@@ -21,6 +21,7 @@ import {
   Layers,
   ArrowRight,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import styles from "./reporting.module.css";
 
@@ -176,6 +177,9 @@ export default function ReportingDashboardPage() {
           </div>
 
           <div className={styles.headerActions}>
+            <Link href="/knowledge" className={styles.navLink}>
+              <Sparkles size={16} /> Base de Conocimiento
+            </Link>
             <Link href="/inventory/products" className={styles.navLink}>
               <Layers size={16} /> Ver Inventario
             </Link>
