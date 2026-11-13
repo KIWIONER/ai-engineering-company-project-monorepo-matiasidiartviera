@@ -10,7 +10,7 @@ class SupplierStatus(str, Enum):
 class SupplierBase(BaseModel):
     name: str = Field(..., min_length=1)
     country: str = Field(..., min_length=1)
-    categories: List[str] = Field(..., min_items=1)
+    categories: List[str] = Field(..., min_length=1)
     hourly_rate: float = Field(..., gt=0)
     status: SupplierStatus
 

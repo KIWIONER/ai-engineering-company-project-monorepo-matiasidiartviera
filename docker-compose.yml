@@ -62,6 +62,21 @@ services:
     networks:
       - nexova-network
 
+  qdrant:
+    image: qdrant/qdrant:v1.13.0
+    container_name: nexova-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__ENABLE_STATIC_CONTENT=0
+    networks:
+      - nexova-network
+volumes:
+  qdrant_data:
+  
 networks:
   nexova-network:
     name: nexova-network

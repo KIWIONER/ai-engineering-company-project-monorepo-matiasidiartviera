@@ -29,6 +29,10 @@ const nextConfig: NextConfig = {
         source: "/profiles/:path*",
         destination: `${BACKEND_URL}/profiles/:path*`,
       },
+      {
+        source: "/telemetry/:path*",
+        destination: `${BACKEND_URL}/telemetry/:path*`,
+      },
     ];
   },
 };
