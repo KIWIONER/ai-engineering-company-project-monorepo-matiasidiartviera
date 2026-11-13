@@ -1,110 +1,108 @@
-# Colas de Mensajes y Tareas Asíncronas
+# Agente de Soporte con LangGraph — Parte 2 de 2: Herramientas Fuera del RAG
 
 ## 🎯 Tu reto
 
-> 📌 **Estás construyendo sobre tu copia del monorepo** de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.
+📌 Estás construyendo sobre tu copia del [monorepo](https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo) de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.
 
-Tu empresa tiene una API en producción y un pipeline de datos que ya funciona. Pero hay operaciones que aún bloquean el ciclo de request-response: procesar un lote de registros, generar un informe, enviar notificaciones masivas. Mientras esas operaciones corren, la API no responde a otros usuarios. Tu tech lead ha abierto el siguiente ticket:
+Esta es la **Parte 2 de 2** y depende directamente de la Parte 1: necesitas el grafo de LangGraph ya compilado, con tracing y evals funcionando, antes de continuar aquí.
+
+Tu agente hoy solo sabe una cosa: buscar en la base de conocimiento del RAG. Pero soporte no vive solo de documentación — vive de datos que cambian todo el tiempo. El brief de tu tech lead es directo:
+
+> **De:** Tech Lead  
+> **Para:** Equipo de Agentes  
+> 
+> *"El RAG que migraron en la Parte 1 responde bien preguntas sobre procedimientos y políticas, pero cuando un agente de soporte pregunta '¿en qué estado está el ticket 482?', el agente inventa una respuesta porque no tiene forma de consultar eso — esa información no vive en la base de conocimiento, vive en el gestor de incidentes que ya construimos.*  
+> 
+> *Necesito que le den al agente una tool para consultar el sistema de incidentes en tiempo real. Como extra, si les alcanza el tiempo, otra tool para consultar el gestor de inventario también resuelve preguntas frecuentes de soporte ('¿tenemos stock de X?').*  
+> 
+> *Criterio de aceptación: el agente debe decidir por sí mismo cuándo la pregunta requiere el RAG y cuándo requiere una tool externa — sin que el usuario tenga que especificarlo."*
+
+Dos requisitos quedan implícitos en ese brief y son fáciles de pasar por alto:
+1. **Las tools deben leer de los servicios que ya construiste** en proyectos anteriores (el gestor de incidentes y, si lo hiciste, el gestor de inventario) — no se simulan datos nuevos ni se inventa un dataset paralelo.
+2. **Si una tool falla o el servicio no responde**, el grafo necesita una ruta explícita de recuperación, no un error que rompa toda la corrida.
 
 ---
 
-### Ticket #DEV-55 — Cola de tareas asíncronas con Redis y Celery
+## 📚 Conocimiento complementario: por qué esto no es "otro RAG"
 
-Necesitamos desacoplar las operaciones pesadas de la API. Cuando un endpoint reciba una solicitud que implique trabajo de larga duración, debe encolar la tarea y devolver inmediatamente un `task_id` al cliente. Un worker independiente procesa la cola. El cliente puede consultar el estado de su tarea en cualquier momento.
+Es tentador resolver esto indexando los tickets en el mismo vector store del RAG. **No lo hagas:** los tickets cambian de estado en tiempo real, y el RAG está pensado para conocimiento relativamente estable (políticas, procedimientos). 
 
-#### Criterios de aceptación:
-- **Redis corre como broker en Docker.** La API y los workers se conectan al mismo broker.
-- **Al menos una operación existente en tu API —la que más tarde en responder— se convierte en tarea asíncrona mediante Celery.**
-- **El endpoint que recibe la solicitud devuelve `202 Accepted` con un `task_id` inmediatamente**, sin esperar a que la tarea termine.
-- **Existe un endpoint `GET /tasks/{task_id}` que devuelve el estado actual de la tarea (`pending`, `started`, `success`, `failure`) y el resultado cuando esté disponible.**
-- **Si una tarea falla hasta tres veces, pasa a una Dead Letter Queue (DLQ).** El fallo queda registrado con `task_id`, número de intento y mensaje de error.
-- **Los workers corren como procesos separados**, no dentro del proceso de FastAPI.
-- **Flower está levantado y accesible** para monitorear la cola durante el desarrollo.
+Una tool que llama directamente al endpoint del gestor de incidentes siempre te da el dato actual; una copia indexada del ticket queda desactualizada en el momento en que alguien cambia su estado. Esta es la diferencia entre **"conocimiento" (RAG)** y **"datos operativos en vivo" (tool call)**.
 
 ---
 
-## 📖 Conocimiento complementario — El patrón Productor / Consumidor
+## 🌱 Cómo Empezar
 
-El cambio conceptual clave de este proyecto es entender que **encolar una tarea y ejecutar una tarea son responsabilidades de dos procesos distintos.**
+1. **Confirma que tu servicio del gestor de incidentes** (`GET /api/incidents`, `GET /api/incidents/{id}`) está corriendo localmente — es el que construiste en un proyecto anterior del monorepo. Si construiste también el gestor de inventario (`GET /inventory/products`), tenlo disponible también para el extra.
+2. **Parte de la rama de la Parte 1** (grafo compilado, con tracing y evals) y crea una rama nueva:
+   ```bash
+   git switch -c feature/langgraph-external-tools
+   ```
+3. No necesitas instalar dependencias nuevas más allá de las que ya usas para llamar HTTP desde tu backend (`httpx`).
+
+---
+
+## 💻 Qué Tienes Que Hacer
+
+### Tool obligatoria: consulta de tickets de soporte
+- [ ] **Define un contrato tipado** de entrada/salida para la tool (ej. entrada: `ticket_id` o filtros de búsqueda; salida: estado, categoría, origen, fechas — los mismos campos que expone tu API de incidentes).
+- [ ] **Implementa la tool para que lea de tu gestor de incidentes existente** (`GET /api/incidents` o `GET /api/incidents/{id}`) — nunca datos simulados ni hardcodeados. Puedes llamarlo de dos formas, ambas aceptadas: **(a) por HTTP** al servicio corriendo, o **(b) en-proceso** a través de su capa de servicio/repositorio si el gestor de incidentes vive en el mismo paquete del monorepo. Elige la que coincida con tu arquitectura; lo que se rechaza es un dataset falso paralelo, no el transporte.
+- [ ] **Si el servicio de incidentes requiere autenticación** (p. ej. un JWT o API key), pasa credenciales válidas igual que en tus otras llamadas backend-a-backend — léelas de entorno/config, nunca hardcodees un token. Si tu servicio no tiene auth, indícalo en tu PR para que el revisor no la espere.
+- [ ] **La tool debe ser de solo lectura:** únicamente consulta (`GET`) los datos de incidentes. Una tool nunca debe crear, actualizar ni eliminar tickets.
+- [ ] **Agrega al grafo un nodo para esta tool y una arista condicional** que decida cuándo el agente debe usarla en lugar de (o además de) el RAG.
+- [ ] **Define un timeout explícito y numérico** para la llamada (un valor concreto, p. ej. 3–5 segundos) — si el servicio de incidentes no responde a tiempo, el grafo no debe quedar colgado.
+- [ ] **Define una ruta de fallback:** si la tool agota el timeout, falla o el ticket no existe, el agente responde algo honesto (*"no pude confirmar el estado de ese ticket ahora mismo"*), nunca inventa un estado.
+
+---
+
+### Tool extra (opcional): consulta de inventario
+- [ ] **Si tu empresa tiene un gestor de inventario construido**, define el mismo tipo de contrato tipado para consultar stock por producto (`GET /inventory/products`).
+- [ ] **Aplica las mismas reglas:** timeout, fallback ante fallo, sin datos simulados.
+
+---
+
+### Enrutamiento del agente
+- [ ] **El agente debe decidir automáticamente**, a partir de la pregunta del usuario, si necesita el RAG, una tool, o ambos — sin que el usuario indique explícitamente qué fuente usar.
+- [ ] **Ninguna tool hace más de una cosa:** si te encuentras haciendo que una sola tool *"busque tickets o inventario según el caso"*, sepáralas en dos tools distintas.
+
+---
+
+### Tracing y evaluación (extendidos desde la Parte 1)
+- [ ] **El trace de cada corrida** debe mostrar con claridad si se usó el RAG, una tool, o ambos, y en qué orden.
+- [ ] **Agrega al menos 2 evals nuevos** que verifiquen el enrutamiento: una pregunta que debe resolverse con una tool (no con el RAG) y una pregunta que debe resolverse con el RAG (no con una tool). Un tercer eval opcional puede verificar el comportamiento de fallback cuando el servicio de incidentes no está disponible.
+
+> ⚠️ **IMPORTANTE:** Las tools deben leer de los servicios reales que ya construiste (incidentes, e inventario si aplica). Una implementación que simule esos datos en lugar de llamar a tu propio backend no será aceptada.
+
+---
+
+## ✅ Qué Vamos a Evaluar
+
+- [ ] **La tool de tickets tiene un contrato de entrada/salida tipado** y lee del gestor de incidentes real (HTTP o capa de servicio en-proceso — ambas aceptadas), pasando auth correctamente si el servicio la requiere.
+- [ ] **Las tools son de solo lectura** — ninguna tool crea, actualiza ni elimina datos en los servicios de incidentes/inventario.
+- [ ] **Existe un timeout explícito y numérico** en la llamada a la tool.
+- [ ] **Existe una ruta de fallback verificable** cuando la tool falla o el recurso no existe — sin respuestas inventadas.
+- [ ] **El agente enruta correctamente entre RAG y tool(s)** según el contenido de la pregunta, sin instrucción explícita del usuario.
+- [ ] **Cada tool tiene una única responsabilidad** (no hay una tool que combine tickets e inventario).
+- [ ] **El trace de cada corrida** permite distinguir qué fuente(s) se usaron y en qué orden.
+- [ ] **Hay al menos 2 evals nuevos** que verifican el enrutamiento correcto entre RAG y tool.
+- [ ] *(Extra)* **La tool de inventario**, si se implementó, sigue las mismas reglas de contrato, timeout y fallback.
+
+---
+
+## 📦 Cómo Entregar Este Proyecto
+
+Esta es la **Parte 2 de 2**. Se entrega mediante su propio Pull Request, separado del de la Parte 1 — puede partir de esa rama, pero se revisa de forma independiente.
 
 ```text
-Cliente → API (Productor) → Redis (Broker) → Worker (Consumidor) → Resultado
+services/
+  <agent-service>/    ← nodo(s) y tool(s) nuevas agregadas al grafo de la Parte 1
+
+tests/
+  pipelines/          ← evals de enrutamiento y fallback
 ```
 
-- **Productor:** la API recibe la solicitud, crea un mensaje y lo deposita en la cola. Devuelve inmediatamente.
-- **Broker:** Redis actúa como intermediario persistente. Si el worker se cae, los mensajes no se pierden.
-- **Consumidor (Worker):** un proceso independiente que escucha la cola, toma mensajes de uno en uno y los procesa.
-
-Tres reglas que aplican siempre en este patrón:
-
-1. **Los mensajes son ligeros.** Nunca pongas en el mensaje un blob completo (imagen, documento, lote de datos). Pasa el `id` o la ruta — el worker lo recupera él mismo.
-2. **ACK solo tras éxito.** El mensaje se confirma como procesado únicamente cuando el worker termina correctamente. Si el worker falla antes, el mensaje vuelve a la cola para reintento.
-3. **Toda tarea tiene timeout.** Un worker que no termina nunca bloquea el pool. Define siempre un tiempo máximo de ejecución.
-
----
-
-## 🌱 Cómo Empezar el Proyecto
-
-1. Añade Redis a tu `docker-compose.yml` como servicio broker. Usa la imagen oficial y exponla en el puerto estándar.
-2. Instala las dependencias necesarias con `uv add celery redis flower`.
-3. Crea el módulo Celery en tu monorepo (`services/celery_app.py` o similar) y configúralo para apuntar a Redis como broker y backend de resultados.
-4. Identifica en tu API el endpoint o la operación que más tarda en responder — ese es el candidato a convertir en tarea asíncrona.
-5. Levanta un worker con `celery -A services.celery_app worker` y verifica que se conecta al broker antes de modificar ningún endpoint.
-
----
-
-## 💻 Qué Debes Hacer
-
-### Infraestructura
-- [ ] Redis añadido a `docker-compose.yml` con imagen oficial, puerto `6379` expuesto y política de memoria `noeviction`.
-- [ ] Flower añadido a `docker-compose.yml` como servicio de monitoreo, accesible en el puerto `5555`.
-- [ ] La API y los workers se conectan al mismo Redis. La URL de conexión se lee de una variable de entorno (`REDIS_URL`).
-
-### Módulo Celery (`services/`)
-- [ ] Crear la instancia de Celery con Redis como broker y como result backend.
-- [ ] Definir al menos una tarea asíncrona (`@app.task`) que encapsule la operación pesada identificada en tu API.
-- [ ] Configurar reintentos automáticos con `max_retries=3` y backoff exponencial (`countdown` creciente entre intentos).
-- [ ] Implementar una Dead Letter Queue: cuando una tarea supera `max_retries`, registrar en base de datos el `task_id`, número de intento, error y timestamp.
-
-### Endpoints de la API
-- [ ] El endpoint que antes ejecutaba la operación pesada ahora encola la tarea y devuelve `202 Accepted` con `{"task_id": "..."}` de forma inmediata.
-- [ ] Crear el endpoint `GET /tasks/{task_id}` que consulta el estado de la tarea en Redis y devuelve `{"task_id": "...", "status": "...", "result": ...}`.
-- [ ] El campo `status` refleja los estados reales de Celery: `pending`, `started`, `success`, `failure`.
-
-### Worker
-- [ ] El worker corre como proceso independiente (no dentro del proceso de FastAPI).
-- [ ] El worker está documentado en el README del monorepo: cómo levantarlo, cómo detenerlo.
-
-### Observabilidad
-- [ ] Cada tarea registra en el log: `task_id`, intento, estado resultante y duración de la ejecución.
-- [ ] Los fallos registran adicionalmente el mensaje de error completo.
-- [ ] Flower está accesible y muestra las tareas encoladas, en proceso y completadas.
-
----
-
-## ✅ Qué Evaluaremos
-
-- [ ] **Redis corre en Docker** y los workers se conectan a él sin errores de configuración.
-- [ ] **El endpoint modificado devuelve `202 Accepted` con `task_id` en menos de 200ms**, independientemente de la duración de la tarea.
-- [ ] **`GET /tasks/{task_id}` devuelve el estado correcto** en cada fase del ciclo de vida de la tarea.
-- [ ] **Los reintentos automáticos están configurados con backoff:** no se reintenta inmediatamente tras un fallo.
-- [ ] **Tras tres fallos consecutivos, la tarea aparece en la DLQ** con `task_id`, número de intento y mensaje de error registrados en base de datos.
-- [ ] **El worker es un proceso separado:** detener la API no detiene el worker ni pierde mensajes en cola.
-- [ ] **Los mensajes en cola contienen solo identificadores o referencias** — ningún payload de datos voluminosos.
-- [ ] **Flower está levantado y muestra al menos una tarea completada y una fallida** durante la demostración.
-
----
-
-## 📦 Cómo Entregar
-
-1. Asegúrate de que todos los ítems del checklist estén completados.
-2. Haz push de tu rama al repositorio.
-3. Abre un **Pull Request** desde tu rama hacia `main`.
-4. En el cuerpo del PR incluye:
-   - El endpoint seleccionado para convertir en tarea asíncrona y la justificación de esa elección.
-   - Una captura de Flower mostrando al menos una tarea completada y una en la DLQ.
-   - El fragmento de log de una ejecución con reintento.
-5. Añade la etiqueta `async-tasks` al PR antes de enviarlo a revisión.
-
-
-
+1. Sube tu rama con la estructura anterior y abre un Pull Request al repositorio original con la etiqueta `langgraph-external-tools`.
+2. Asegúrate de que el PR incluya:
+   - El trace de una corrida donde el agente usó la **tool de tickets**.
+   - El trace de una corrida donde el agente usó el **RAG** (para demostrar el enrutamiento correcto).
+   - El resultado de correr los **evals nuevos**.

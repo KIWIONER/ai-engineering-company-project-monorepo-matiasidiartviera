@@ -10,7 +10,7 @@ import tempfile
 from fastapi.responses import FileResponse
 from services.api.routes import users, profiles, auth, inventory
 import csv
-from services.api.routes import suppliers, incidents, candidates, telemetry, tasks
+from services.api.routes import suppliers, incidents, candidates, telemetry, tasks, knowledge, agent
 from contextlib import asynccontextmanager
 from sqlmodel import SQLModel
 from services.api.database import engine
@@ -117,6 +117,8 @@ app.include_router(candidates.router)
 app.include_router(telemetry.router)
 app.include_router(reporting_router)
 app.include_router(tasks.router)
+app.include_router(knowledge.router)
+app.include_router(agent.router)
 
 latest_metrics = None
 
@@ -195,3 +197,4 @@ async def export_results():
         media_type="text/csv", 
         filename="resultados_incidencias.csv"
     )
+
