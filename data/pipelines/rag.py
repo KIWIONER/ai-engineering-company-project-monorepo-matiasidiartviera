@@ -52,29 +52,64 @@ la documentación oficial no dispone de dicho detalle.
 de resolución de SLAs), cítalos con exactitud técnica.
 """
 
+def _is_chunk_authorized(
+    payload: dict[str, Any],
+    *,
+    user_role: str = "admin",
+    user_department: str | None = None,
+    user_tenant: str | None = None,
+) -> bool:
+    """
+    Control de acceso por rol, departamento y tenant para fragmentos RAG (OWASP A01).
+    - 'admin' tiene acceso global.
+    - Si un chunk declara 'tenant_id', debe coincidir con user_tenant.
+    - Si un chunk declara 'allowed_roles', user_role debe estar incluido.
+    - Si un chunk declara 'department' distinto de 'general'/'public', debe coincidir con user_department.
+    """
+    role = (user_role or "user").strip().lower()
+    if role == "admin":
+        return True
+
+    chunk_tenant = payload.get("tenant_id")
+    if chunk_tenant is not None:
+        if not user_tenant or str(chunk_tenant).strip().lower() != str(user_tenant).strip().lower():
+            return False
+
+    allowed_roles = payload.get("allowed_roles")
+    if allowed_roles:
+        normalized_roles = {str(r).strip().lower() for r in allowed_roles}
+        if role not in normalized_roles:
+            return False
+
+    chunk_dept = payload.get("department")
+    if chunk_dept is not None:
+        dept_norm = str(chunk_dept).strip().lower()
+        if dept_norm not in {"", "general", "public"}:
+            if not user_department or dept_norm != str(user_department).strip().lower():
+                return False
+
+    return True
+
+
 def retrieve(
     query: str,
     *,
     k: int = 5,
-    min_score: float=0.70,
-    collection_name: str= DEFAULT_COLLECTION_NAME,
+    min_score: float = 0.70,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
     qdrant_url: str = DEFAULT_QDRANT_URL,
+    user_role: str = "admin",
+    user_department: str | None = None,
+    user_tenant: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Recupera los k fragmentos más relevantes de Qdrant que superen el umbral min_score.
-    Args:
-        query: Pregunta o término de búsqueda en lenguaje natural.
-        k: Número máximo de fragmentos a recuperar (Top-K).
-        min_score: Umbral de similitud coseno mínimo (evita alucinaciones).
-        collection_name: Nombre de la colección en Qdrant.
-        qdrant_url: URL del servicio Qdrant.
-    Returns:
-        Lista de diccionarios con el payload y el score de cada fragmento.
+    Recupera los k fragmentos más relevantes de Qdrant que superen el umbral min_score
+    y estén autorizados para el rol, departamento y tenant del usuario.
     """
     clean_query = query.strip()
     if not clean_query:
         return []
-    
+
     client = QdrantClient(url=qdrant_url)
     query_vector = embed(clean_query)
 
@@ -88,10 +123,17 @@ def retrieve(
     clean_results: list[dict[str, Any]] = []
     for point in search_result.points:
         payload = dict(point.payload or {})
+        if not _is_chunk_authorized(
+            payload,
+            user_role=user_role,
+            user_department=user_department,
+            user_tenant=user_tenant,
+        ):
+            continue
         payload["score"] = round(float(point.score), 4)
         clean_results.append(payload)
 
-    logger.info(f"retrieve(): '{clean_query[:40]}...' -> {len(clean_results)} fragmentos sobre umbral {min_score}.")
+    logger.info(f"retrieve(): '{clean_query[:40]}...' -> {len(clean_results)} fragmentos autorizados sobre umbral {min_score}.")
     return clean_results
 
 def generate_answer(

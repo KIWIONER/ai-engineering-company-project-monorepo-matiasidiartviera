@@ -128,6 +128,37 @@ def check_tool_scope(required_scope: str, tool_name: str) -> AuthInfo:
         )
     return auth_info
 
+
+def check_tenant_access(
+    auth_info: AuthInfo,
+    resource_tenant: Optional[str],
+    tool_name: str,
+) -> None:
+    """
+    Invariante anti-IDOR / multi-tenant (OWASP A01):
+    - Si el token tiene role='admin', puede consultar cualquier tenant.
+    - En caso contrario, el claim 'tenant_id' (o 'branch') es obligatorio y debe
+      coincidir exactamente con el tenant/branch propietario del recurso.
+    """
+    claims = auth_info.claims or {}
+    role = str(claims.get("role", "user")).lower()
+    if role == "admin":
+        return
+
+    caller_tenant = str(claims.get("tenant_id") or claims.get("branch") or "").strip().lower()
+    target_tenant = str(resource_tenant or "").strip().lower()
+
+    if not caller_tenant or not target_tenant or caller_tenant != target_tenant:
+        log_tool_invocation(
+            tool_name,
+            auth_info.client_id or "unknown_client",
+            "FORBIDDEN_TENANT",
+            {"caller_tenant": caller_tenant or None, "target_tenant": target_tenant or None},
+        )
+        raise PermissionError(
+            "Permiso denegado (403 Forbidden): Acceso cross-tenant bloqueado."
+        )
+
 # 5. Sistema de Logging de Auditoría
 def log_tool_invocation(
     tool_name: str,
@@ -150,6 +181,8 @@ def create_access_token(
     scopes: Optional[List[str]] = None,
     expires_minutes: int = 120,
     subject: str = "nexova_user",
+    tenant_id: Optional[str] = None,
+    role: str = "user",
 ) -> str:
     """
     Genera un Access Token JWT válido para pruebas locales, MCP Playground o clientes autorizados.
@@ -158,15 +191,18 @@ def create_access_token(
         scopes = settings.supported_scopes
     now = datetime.now(timezone.utc)
     expire = now + timedelta(minutes=expires_minutes)
-    payload = {
+    payload: Dict[str, Any] = {
         "sub": subject,
         "client_id": client_id,
         "scopes": scopes,
+        "role": role,
         "iss": settings.oauth_issuer,
         "aud": settings.oauth_audience,
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
+    if tenant_id:
+        payload["tenant_id"] = tenant_id
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 # 7. Metadatos de Recurso Protegido RFC 9470 (OAuth Protected Resource Metadata)

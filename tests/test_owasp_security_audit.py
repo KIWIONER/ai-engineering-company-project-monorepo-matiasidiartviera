@@ -80,3 +80,245 @@ def test_sec06_hitl_default_deny_on_contradiction():
     "Priorizar tickets de RetailNova",
 )
     assert res.decision != "approve"
+
+
+def test_sec06_mcp_incidents_get_status_enforces_two_tenants(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from mcps.company_tools.auth import create_access_token, mcp_auth, verify_access_token
+    from mcps.company_tools.config import settings
+    from mcps.company_tools.server import mcp
+
+    fake_incidents = [
+        {"id": "TK-VAL-1", "title": "Caída VPN Valencia", "status": "open", "branch": "valencia"},
+        {"id": "TK-MIA-1", "title": "Error nómina Miami", "status": "open", "branch": "miami"},
+    ]
+
+    class FakeTable:
+        def search(self, query):
+            return [row for row in fake_incidents if row["id"] == "TK-VAL-1" or row["id"] == "TK-MIA-1"]
+
+    # Ajustar búsqueda exacta por id en FakeTinyDB
+    class FakeTinyDB:
+        def table(self, name):
+            class _Table:
+                def search(self, cond):
+                    # Evaluar condición TinyDB directamente sobre dict
+                    return [r for r in fake_incidents if cond(r)]
+            return _Table()
+
+    monkeypatch.setattr("mcps.company_tools.tools_incidents.get_tinydb", lambda: FakeTinyDB())
+
+    async def _run():
+        # Tenant Valencia puede consultar TK-VAL-1
+        tok_val = create_access_token(
+            client_id="agent-valencia",
+            scopes=[settings.scope_incidents_read],
+            tenant_id="valencia",
+            role="user",
+        )
+        mcp_auth._context_var.set(verify_access_token(tok_val))
+        ok_res = await mcp.call_tool("incidents_get_status", arguments={"ticket_id": "TK-VAL-1"})
+        assert ok_res.structured_content["status"] == "success"
+        assert ok_res.structured_content["incident"]["branch"] == "valencia"
+
+        # Tenant Valencia NO puede consultar TK-MIA-1 (de otro tenant)
+        try:
+            await mcp.call_tool("incidents_get_status", arguments={"ticket_id": "TK-MIA-1"})
+            assert False, "Debió bloquear el acceso cross-tenant a TK-MIA-1"
+        except Exception as exc:
+            assert "403" in str(exc) or "cross-tenant" in str(exc).lower() or "permiso denegado" in str(exc).lower()
+
+    asyncio.run(_run())
+
+
+def test_sec06_rag_knowledge_query_enforces_two_tenants_and_departments(monkeypatch):
+    from types import SimpleNamespace
+    from data.pipelines import rag as rag_mod
+
+    fake_points = [
+        SimpleNamespace(
+            score=0.92,
+            payload={
+                "source_document": "soporte_val.md",
+                "document_title": "SLA Soporte Valencia",
+                "section": "Operativa",
+                "department": "soporte",
+                "tenant_id": "valencia",
+                "text": "SLA de soporte para Valencia es 4 horas.",
+            },
+        ),
+        SimpleNamespace(
+            score=0.90,
+            payload={
+                "source_document": "rrhh_miami.md",
+                "document_title": "Salarios RRHH Miami",
+                "section": "Confidencial",
+                "department": "rrhh",
+                "tenant_id": "miami",
+                "allowed_roles": ["rrhh", "admin"],
+                "text": "Datos salariales confidenciales de Miami.",
+            },
+        ),
+        SimpleNamespace(
+            score=0.85,
+            payload={
+                "source_document": "manual_general.md",
+                "document_title": "Manual General",
+                "section": "General",
+                "department": "general",
+                "text": "Política general de Nexova Solutions.",
+            },
+        ),
+    ]
+
+    class FakeQdrantClient:
+        def __init__(self, url):
+            pass
+
+        def query_points(self, **kwargs):
+            return SimpleNamespace(points=fake_points)
+
+    monkeypatch.setattr(rag_mod, "QdrantClient", FakeQdrantClient)
+    monkeypatch.setattr(rag_mod, "embed", lambda q: [0.1, 0.2])
+    monkeypatch.setattr("services.api.routes.knowledge.generate_answer", lambda question, context: f"chunks={len(context)}")
+
+    client = TestClient(app)
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "u-val",
+        "email": "agente.valencia@nexova.com",
+        "role": "user",
+        "department": "soporte",
+        "tenant_id": "valencia",
+    }
+    try:
+        res = client.post("/knowledge/query", json={"question": "Cuál es el SLA y salarios?"})
+        assert res.status_code == 200
+        body = res.json()
+        titles = [s["document_title"] for s in body["sources"]]
+        assert "SLA Soporte Valencia" in titles
+        assert "Manual General" in titles
+        assert "Salarios RRHH Miami" not in titles
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_sec06_mcp_incidents_get_status_enforces_two_tenants(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from mcps.company_tools.auth import create_access_token, mcp_auth, verify_access_token
+    from mcps.company_tools.config import settings
+    from mcps.company_tools.server import mcp
+
+    fake_incidents = [
+        {"id": "TK-VAL-1", "title": "Caída VPN Valencia", "status": "open", "branch": "valencia"},
+        {"id": "TK-MIA-1", "title": "Error nómina Miami", "status": "open", "branch": "miami"},
+    ]
+
+    class FakeTable:
+        def search(self, query):
+            return [row for row in fake_incidents if row["id"] == "TK-VAL-1" or row["id"] == "TK-MIA-1"]
+
+    # Ajustar búsqueda exacta por id en FakeTinyDB
+    class FakeTinyDB:
+        def table(self, name):
+            class _Table:
+                def search(self, cond):
+                    # Evaluar condición TinyDB directamente sobre dict
+                    return [r for r in fake_incidents if cond(r)]
+            return _Table()
+
+    monkeypatch.setattr("mcps.company_tools.tools_incidents.get_tinydb", lambda: FakeTinyDB())
+
+    async def _run():
+        # Tenant Valencia puede consultar TK-VAL-1
+        tok_val = create_access_token(
+            client_id="agent-valencia",
+            scopes=[settings.scope_incidents_read],
+            tenant_id="valencia",
+            role="user",
+        )
+        mcp_auth._context_var.set(verify_access_token(tok_val))
+        ok_res = await mcp.call_tool("incidents_get_status", arguments={"ticket_id": "TK-VAL-1"})
+        assert ok_res.structured_content["status"] == "success"
+        assert ok_res.structured_content["incident"]["branch"] == "valencia"
+
+        # Tenant Valencia NO puede consultar TK-MIA-1 (de otro tenant)
+        try:
+            await mcp.call_tool("incidents_get_status", arguments={"ticket_id": "TK-MIA-1"})
+            assert False, "Debió bloquear el acceso cross-tenant a TK-MIA-1"
+        except Exception as exc:
+            assert "403" in str(exc) or "cross-tenant" in str(exc).lower() or "permiso denegado" in str(exc).lower()
+
+    asyncio.run(_run())
+
+
+def test_sec06_rag_knowledge_query_enforces_two_tenants_and_departments(monkeypatch):
+    from types import SimpleNamespace
+    from data.pipelines import rag as rag_mod
+
+    fake_points = [
+        SimpleNamespace(
+            score=0.92,
+            payload={
+                "source_document": "soporte_val.md",
+                "document_title": "SLA Soporte Valencia",
+                "section": "Operativa",
+                "department": "soporte",
+                "tenant_id": "valencia",
+                "text": "SLA de soporte para Valencia es 4 horas.",
+            },
+        ),
+        SimpleNamespace(
+            score=0.90,
+            payload={
+                "source_document": "rrhh_miami.md",
+                "document_title": "Salarios RRHH Miami",
+                "section": "Confidencial",
+                "department": "rrhh",
+                "tenant_id": "miami",
+                "allowed_roles": ["rrhh", "admin"],
+                "text": "Datos salariales confidenciales de Miami.",
+            },
+        ),
+        SimpleNamespace(
+            score=0.85,
+            payload={
+                "source_document": "manual_general.md",
+                "document_title": "Manual General",
+                "section": "General",
+                "department": "general",
+                "text": "Política general de Nexova Solutions.",
+            },
+        ),
+    ]
+
+    class FakeQdrantClient:
+        def __init__(self, url):
+            pass
+
+        def query_points(self, **kwargs):
+            return SimpleNamespace(points=fake_points)
+
+    monkeypatch.setattr(rag_mod, "QdrantClient", FakeQdrantClient)
+    monkeypatch.setattr(rag_mod, "embed", lambda q: [0.1, 0.2])
+    monkeypatch.setattr("services.api.routes.knowledge.generate_answer", lambda question, context: f"chunks={len(context)}")
+
+    client = TestClient(app)
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "u-val",
+        "email": "agente.valencia@nexova.com",
+        "role": "user",
+        "department": "soporte",
+        "tenant_id": "valencia",
+    }
+    try:
+        res = client.post("/knowledge/query", json={"question": "Cuál es el SLA y salarios?"})
+        assert res.status_code == 200
+        body = res.json()
+        titles = [s["document_title"] for s in body["sources"]]
+        assert "SLA Soporte Valencia" in titles
+        assert "Manual General" in titles
+        assert "Salarios RRHH Miami" not in titles
+    finally:
+        app.dependency_overrides.clear()

@@ -19,7 +19,7 @@ from packages.shared.validation import (
 )
 from services.api.database import get_tinydb
 from mcps.company_tools.config import settings
-from mcps.company_tools.auth import check_tool_scope, log_tool_invocation
+from mcps.company_tools.auth import check_tool_scope, check_tenant_access, log_tool_invocation
 
 logger = logging.getLogger("nexova.mcp_incidents")
 
@@ -66,6 +66,8 @@ def register_incident_tools(mcp: FastMCP) -> None:
                 res = await client.get(f"{settings.backend_api_url}/api/incidents/{clean_id}")
                 if res.status_code == 200:
                     data = res.json()
+                    resource_tenant = data.get("tenant_id") or data.get("branch")
+                    check_tenant_access(auth_info, resource_tenant, tool_name)
                     log_tool_invocation(tool_name, client_id, "SUCCESS", {"ticket_id": clean_id, "source": "api"})
                     return {"status": "success", "incident": data}
         except Exception:
@@ -90,6 +92,8 @@ def register_incident_tools(mcp: FastMCP) -> None:
             }
 
         incident = results[0]
+        resource_tenant = incident.get("tenant_id") or incident.get("branch")
+        check_tenant_access(auth_info, resource_tenant, tool_name)
         log_tool_invocation(tool_name, client_id, "SUCCESS", {"ticket_id": clean_id, "source": "tinydb"})
         return {"status": "success", "incident": incident}
 

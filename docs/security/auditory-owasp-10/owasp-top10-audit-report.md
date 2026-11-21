@@ -1,3 +1,4 @@
+
 # Informe de Auditoría de Seguridad OWASP Top 10 & Endurecimiento — Nexova
 
 - **Fecha:** `2026-11-21`
@@ -118,16 +119,70 @@ Ejecutado `bash skills/security-audit-suite/scripts/quick_security_scan.sh .` so
 | SEC-03 | `Infraestructura · OWASP A05` | **CRÍTICA** | `docker-compose.yml`, `services/Dockerfile`, `uis/Dockerfile` | Usuarios no-root (`appuser`, `node`), versión fijada `mher/flower:2.0` y puertos internos atados a `127.0.0.1` | **Corregido** |
 | SEC-04 | `Backend · OWASP A01` | **CRÍTICA** | `services/api/routes/users.py`, `services/api/routes/telemetry.py` | Anti-IDOR (`_require_admin_or_self` / `_is_admin` con `403`) y `Depends(get_current_user)` en `/telemetry/events` | **Corregido** |
 | SEC-05 | `Backend · OWASP A02` | **CRÍTICA** | `services/api/security.py` | Eliminado fallback hardcoded de `SECRET_KEY` (*fail-secure* con `RuntimeError` en producción; clave efímera en `pytest`) | **Corregido** |
-| SEC-06 | `Sistema Agéntico · OWASP A01/LLM01/LLM06` | **ALTA / CRÍTICA** | `services/agent/guardrails.py`, `services/agent/memory_evaluator.py` | Bloqueo determinista de Prompt Injection (CV + ticket) y *default-deny* HITL | **Corregido** |
+| SEC-06 | `Sistema Agéntico · OWASP A01/LLM01/LLM06` | **CRÍTICA** | `mcps/company_tools/auth.py`, `mcps/company_tools/tools_incidents.py`, `data/pipelines/rag.py`, `services/api/routes/knowledge.py`, `services/agent/guardrails.py` | Autorización *default-deny* por `tenant_id`/rol/departamento en `incidents_get_status` y `/knowledge/query`, bloqueo de Prompt Injection (CV + ticket) y HITL | **Corregido** |
 | SEC-07 | `Frontend Legacy · OWASP A03` | **ALTA** | `admin/tickets.js` | Escapado `escapeHtml(...)` en `card.innerHTML` y limpieza con `replaceChildren()` | **Corregido** |
 
-### 3.1 Evidencia Reproducible (Antes vs. Después)
+### 3.1 Evidencia Reproducible en Código y Tests (Antes vs. Después)
 
 1. **Escaneo Estático (`bash skills/security-audit-suite/scripts/quick_security_scan.sh .`):**
    - **Antes:** `allow_origins=["*"]` en `services/api/main.py` y `mcps/company_tools/server.py`; `pickle.loads` en `data/pipelines/rfp_intake/graph.py`; `mher/flower:latest` y puertos `6379/5555/6333/6334` sin `127.0.0.1` en `docker-compose.yml`.
    - **Después:** 0 coincidencias en código de CORS `*`, `pickle.loads` e imágenes `:latest`; puertos internos atados a `127.0.0.1`.
-2. **Suite Automatizada (`uv run pytest tests/test_owasp_security_audit.py tests/pipelines/test_agent_guardrails.py -v`):**
-   - **Resultado:** **`22 passed`** (6 pruebas específicas OWASP SEC-01 a SEC-06 + 16 pruebas de guardrails y aislamiento RAG/MCP).
+2. **Suite Automatizada (`uv run pytest tests/test_owasp_security_audit.py tests/test_mcp_server.py tests/pipelines/test_rag.py tests/pipelines/test_agent_guardrails.py -v`):**
+   - **Resultado:** **`43 passed`** (incluye pruebas de dos tenants para `incidents_get_status` —`valencia` vs `miami`— y para `/knowledge/query` —`soporte/valencia` vs `rrhh/miami`—, además de SEC-01 a SEC-06, MCP OAuth y guardrails).
+
+### 3.2 Evidencia Aplicada de Endurecimiento en Servidor (`bc-vps-238` · Ubuntu 22.04.5 LTS)
+
+#### Estado Inicial (Antes — sesión `root@bc-vps-238`)
+```text
+$ id
+uid=0(root) gid=0(root) groups=0(root)
+$ sshd -T | grep -E "permitrootlogin|passwordauthentication"
+permitrootlogin yes
+passwordauthentication yes
+$ ufw status || true
+Status: inactive
+```
+
+#### Estado Endurecido (Después — sesión no-root `deployuser@bc-vps-238`)
+```text
+$ sudo sshd -T | grep -E "permitrootlogin|passwordauthentication"
+permitrootlogin no
+passwordauthentication yes
+
+$ id
+uid=1000(deployuser) gid=1000(deployuser) groups=1000(deployuser),27(sudo)
+
+$ stat -c "%a %U:%G %n" /opt/nexova/app /var/log/nexova /opt/nexova/.env
+750 deployuser:deployuser /opt/nexova/app
+750 deployuser:deployuser /var/log/nexova
+600 deployuser:deployuser /opt/nexova/.env
+
+$ sudo ufw status verbose
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere
+443/tcp                    ALLOW IN    Anywhere
+22/tcp (v6)                ALLOW IN    Anywhere (v6)
+443/tcp (v6)               ALLOW IN    Anywhere (v6)
+
+$ ss -tlnp
+State   Recv-Q  Send-Q   Local Address:Port                Peer Address:Port  Process
+LISTEN  0       128            0.0.0.0:22                       0.0.0.0:*
+LISTEN  0       4096    100.119.135.41%tailscale0:45351         0.0.0.0:*
+LISTEN  0       4096     127.0.0.53%lo:53                       0.0.0.0:*
+LISTEN  0       511            0.0.0.0:18789                    0.0.0.0:*
+LISTEN  0       128          127.0.0.1:35211                    0.0.0.0:*
+LISTEN  0       4096         127.0.0.1:2019                     0.0.0.0:*
+LISTEN  0       128               [::]:22                          [::]:*
+LISTEN  0       4096                 *:80                             *:*
+LISTEN  0       4096                 *:443                            *:*
+LISTEN  0       4096   [fd7a:115c:a1e0::9f33:872a]%tailscale0:50561 [::]:*
+```
 
 ---
 
