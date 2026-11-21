@@ -4,6 +4,7 @@ Router FastAPI para el agente de soporte con LangGraph.
 Endpoint protegido con Auth Guard Standard que delega la ejecución al grafo compilado.
 """
 from __future__ import annotations
+import os
 import asyncio
 import logging
 import re
@@ -25,6 +26,9 @@ from services.api.ws_chat_manager import ChatMessage, chat_session_manager
 from services.agent.graph import agent_app
 from services.agent.state import AgentState
 from services.agent.guardrails import guardrail_tracker
+from services.agent.action_gate import agent_audit_logger
+from services.api.rate_limiter import enforce_llm_guards
+
 
 logger = logging.getLogger("nexova.agent_route")
 
@@ -76,6 +80,7 @@ def query_agent(
     Endpoint protegido para ejecutar una consulta contra el agente.
     Delega enteramente la orquestación al grafo de LangGraph.
     """
+    enforce_llm_guards(current_user, payload.question)
     active_thread = payload.thread_id or str(uuid.uuid4())
     logger.info(f"Invocando agente para usuario '{current_user.get('email', 'anónimo')}' (thread: {active_thread})")
     initial_state: AgentState = {
@@ -95,6 +100,17 @@ def query_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ocurrió un error interno al procesar la consulta en el flujo del agente.",
         )
+
+    guardrail_hit = bool(final_state.get("guardrail_triggered", False))
+    agent_audit_logger.log_decision(
+        user_id=str(current_user.get("id") or current_user.get("email") or "anon"),
+        tenant_id=current_user.get("tenant_id") or current_user.get("branch"),
+        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        action_type=str(final_state.get("intent") or "agent_query"),
+        verdict="denied" if guardrail_hit else "allowed",
+        reason=str(final_state.get("guardrail_failure_type") or "completed"),
+        args={"thread_id": active_thread, "trace": final_state.get("execution_trace", [])},
+    )
     return AgentQueryResponse(
         question=final_state.get("question", payload.question),
         answer=final_state.get("answer", ""),

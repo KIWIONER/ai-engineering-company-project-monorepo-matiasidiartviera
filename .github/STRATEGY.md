@@ -1,10 +1,17 @@
+<<<<<<< Updated upstream
 # Hito — Flujo Agéntico de RFPs: Aprobación y Cierre (Parte 3 de 3)
 
 Antes de empezar: Lee tu [company-BRIEFING.md](https://github.com/4GeeksAcademy/ai-engineering-syllabus/tree/main/content/contexts/09-agentic-workflows) antes de escribir cualquier línea de código — allí están quién aprueba cada departamento (y cualquier aprobador extra que tu empresa exija), las reglas de arbitraje ante conflictos y el formato del documento final. No inventes una escalera jerárquica multi-nivel salvo que tu BRIEFING lo diga (p. ej. umbral de CEO); en la mayoría de empresas el sign-off es el responsable nombrado de cada departamento activo.
+=======
+# Prácticas Seguras en la Integración de IA en Sistemas
+
+Antes de empezar: Lee tu [empresa-BRIEFING.md](https://github.com/4GeeksAcademy/ai-engineering-syllabus/tree/main/content/contexts/cybersecurity-analysis) antes de escribir código — define el marco regulatorio, los datos de la compañía y las restricciones específicas de tu implementación.
+>>>>>>> Stashed changes
 
 ## 🎯 Tu reto
 📌 Estás construyendo sobre tu copia del [monorepo](https://github.com/4GeeksAcademy/ai-engineering-company-project-monorepo) de la empresa seleccionada al inicio del curso — no en un repositorio nuevo.
 
+<<<<<<< Updated upstream
 En la Parte 2 cada departamento ya genera y autoevalúa su sección de la propuesta económica dentro del mismo ticket abierto en la Parte 1. Falta lo más delicado: que un humano de cada departamento dé el visto bueno antes de que el documento final salga hacia el cliente.
 
 ### Ticket — Aprobación humana y cierre del documento
@@ -134,6 +141,21 @@ flowchart LR
     RECIPIENT["SALES TEAM<br/><i>(Recipient)</i>"]
     DOC --> RECIPIENT
 ```
+=======
+Ya construiste agentes que clasifican, responden y escalan solicitudes; les diste memoria; los conectaste a herramientas externas mediante MCP; y expusiste actualizaciones en tiempo real al dashboard. Todo eso funciona — pero nadie ha verificado todavía si es seguro correrlo en producción. Tu líder de compliance ha abierto un ticket pidiendo una auditoría formal antes de que el sistema siga creciendo.
+
+El brief es directo: no se trata solo de "que funcione", sino de demostrar que cada componente que toca un modelo de lenguaje — endpoints, agentes, integraciones con terceros — sigue principios de seguridad por diseño y puede sostenerse frente a un marco de referencia reconocido. Tu tech lead fue igual de específico en el handoff: la entrega no es únicamente un informe, es también la corrección de al menos las brechas más críticas que ese informe identifique.
+
+> **De:** Responsable de Compliance **Para:** Equipo de Ingeniería de IA  
+> **Contexto:** Nuestros sistemas de IA han crecido rápido — agentes, RAG, MCP, workflows con aprobación humana — pero nunca hicimos una revisión de seguridad formal de conjunto. Antes de seguir escalando, necesitamos saber dónde estamos parados.  
+> **Qué necesito:** Un inventario de todos los sistemas de IA de la compañía, un informe estructurado según el checklist de NIST (Govern, Identify, Protect, Detect, Respond, Recover) con una ruta de mejoras priorizada, y la implementación de las protecciones más urgentes — especialmente frente a prompt injection y manejo de secretos.  
+> **Acceptance criteria:** El informe cubre las seis funciones de NIST con al menos una acción concreta por función; el inventario de sistemas de IA está completo y con responsable asignado por componente; las protecciones implementadas se pueden demostrar con un caso de prueba reproducible.
+
+---
+
+### 📎 Conocimiento complementario: el framework NIST
+NIST organiza la gestión de ciberseguridad en seis funciones: **Govern** (política y responsabilidades), **Identify** (inventario y evaluación de riesgo), **Protect** (controles preventivos), **Detect** (monitoreo y alertas), **Respond** (plan de incidentes) y **Recover** (restauración de servicio). No necesitas implementar las seis a nivel enterprise — necesitas mapear tu sistema actual contra cada función y priorizar lo que falta. Es la misma lógica de un checklist de calidad, aplicada a seguridad.
+>>>>>>> Stashed changes
 
 ---
 
@@ -142,6 +164,7 @@ flowchart LR
 ---
 
 ## 🌱 Cómo Empezar el Proyecto
+<<<<<<< Updated upstream
 
 Continúa sobre tu rama del Hito en el fork del monorepo de tu empresa, a partir de donde entregaste la Parte 2. Si todavía no tienes tu fork, créalo desde el monorepo base.
 
@@ -149,11 +172,18 @@ Continúa sobre tu rama del Hito en el fork del monorepo de tu empresa, a partir
 2. Configura el checkpointer que corresponda a tu entorno (SQLite o Postgres — evita el checkpointer en memoria salvo en desarrollo local).
 3. Instala cualquier dependencia nueva con `uv add`.
 4. Revisa tu `company-BRIEFING.md` para conocer los aprobadores por departamento, los triggers de conflicto / árbitro fijo, y el formato del documento final.
+=======
+1. Haz un `git pull` de tu fork del monorepo y crea una rama nueva para este trabajo: `git switch -c feature/nist-security-practices`.
+2. Lee tu `empresa-BRIEFING.md` para identificar el marco regulatorio aplicable a tu compañía y los sistemas de IA que ya construiste en milestones anteriores.
+3. Revisa `.env.example` y confirma cómo se gestionan actualmente tus credenciales y API keys.
+4. Antes de tocar código, dibuja o lista (en el README de tu propio informe) todos los puntos donde un modelo de lenguaje recibe input externo — de un usuario, de un documento en tu base de conocimiento semántica, o de una herramienta MCP.
+>>>>>>> Stashed changes
 
 ---
 
 ## 💻 Lo Que Debes Hacer
 
+<<<<<<< Updated upstream
 ### Aprobación humana por departamento
 - [ ] Implementa un punto de interrupción (`interrupt`) antes de dar por aprobada la sección de cada departamento.
 - [ ] La interrupción debe pausar únicamente la rama del grafo correspondiente a ese departamento, sin bloquear el avance de los departamentos que ya están listos.
@@ -208,10 +238,46 @@ Continúa sobre tu rama del Hito en el fork del monorepo de tu empresa, a partir
 - [ ] Existe una ruta E2E/fixture reproducible (script o test de integración con aprobaciones simuladas), no solo una demo manual en UI.
 - [ ] Una RFP de prueba puede recorrerse de principio a fin (Parte 1 a Parte 3) sin saltos de estado ni inconsistencias visibles entre partes.
 - [ ] Existen pruebas unitarias para la interrupción/reanudación, el límite de iteraciones, el arbitraje y la aprobación en paralelo bajo interrupt.
+=======
+### Inventario y gobierno
+- [ ] Documenta un inventario completo de los sistemas de IA de la compañía construidos hasta ahora (agentes, RAG, MCP, workflows), con responsable asignado por componente.
+- [ ] Identifica, para cada componente, quién es responsable del control cuando el modelo o la herramienta la provee un tercero.
+
+> ⚠️ **IMPORTANTE:** El marco regulatorio aplicable (qué normativa rige, qué plazos de notificación aplican, qué datos están restringidos) depende de tu `BRIEFING.md`. Un informe genérico que ignore el contexto de tu compañía no será aceptado.
+
+### Seguridad por diseño (backend y agentes)
+- [ ] Verifica y corrige el manejo de credenciales: ninguna API key o secreto debe estar hardcodeado en el código; todo debe venir de variables de entorno o un vault.
+- [ ] Implementa validación y sanitización explícita de cualquier input de usuario antes de que llegue al modelo.
+- [ ] Separa claramente las instrucciones de sistema del contenido del usuario en tus prompts, de forma que el contenido de usuario nunca pueda sobrescribir las instrucciones.
+- [ ] Si algún agente lee contenido externo (documentos de tu base de conocimiento, resultados de herramientas MCP), documenta y mitiga el riesgo de prompt injection indirecta.
+- [ ] Si algún componente genera código, SQL o llamadas a herramientas, agrega una capa de validación de ese output antes de ejecutarlo.
+- [ ] Implementa rate limiting sobre al menos un endpoint que dispare llamadas a un modelo, para evitar loops de costo descontrolado.
+- [ ] Agrega logging y trazabilidad de qué acción tomó cada agente y por qué, para al menos un flujo agentic existente.
+- [ ] Confirma que las acciones irreversibles (borrar datos, enviar comunicaciones, aprobar procesos) requieran confirmación humana explícita.
+
+> ⚠️ **IMPORTANTE:** Los valores específicos de tu compañía — qué se considera una acción irreversible, qué datos son sensibles, qué SLA de respuesta aplica ante un incidente — están definidos en tu `BRIEFING.md`.
+
+### Informe NIST
+- [ ] Redacta el informe cubriendo las seis funciones de NIST (Govern, Identify, Protect, Detect, Respond, Recover), con al menos una acción concreta y priorizada por función.
+- [ ] Para cada brecha identificada que no llegaste a corregir en este ciclo, documenta el riesgo y la mitigación propuesta.
+
+---
+
+## ✅ Qué Vamos a Evaluar
+- [ ] El inventario de sistemas de IA lista cada componente construido hasta ahora, con responsable asignado.
+- [ ] No hay API keys ni credenciales hardcodeadas en el código; todas provienen de variables de entorno o vault.
+- [ ] Existe al menos un caso de prueba reproducible que demuestra un intento de prompt injection siendo bloqueado o neutralizado.
+- [ ] Al menos un endpoint que invoca un modelo tiene rate limiting implementado y verificable.
+- [ ] Existe logging verificable de las decisiones y acciones de al menos un agente.
+- [ ] Las acciones irreversibles identificadas requieren confirmación humana antes de ejecutarse.
+- [ ] El informe NIST cubre las seis funciones con al menos una acción concreta por función.
+- [ ] El informe hace referencia explícita al marco regulatorio de tu `BRIEFING.md`, no a normativa genérica.
+>>>>>>> Stashed changes
 
 ---
 
 ## 📦 Cómo Entregar
+<<<<<<< Updated upstream
 Esta es la Parte 3 de 3 del Hito. Entrégala con su propio Pull Request.
 
 1. Haz commit y push de tu rama `feature/rfp-approval-completion`.
@@ -221,3 +287,9 @@ Esta es la Parte 3 de 3 del Hito. Entrégala con su propio Pull Request.
 
 
 
+=======
+1. Haz commit y push de tu rama.
+2. Abre un Pull Request hacia tu propio fork del monorepo, incluyendo el informe NIST como archivo markdown dentro de tu carpeta de entrega.
+3. En la descripción del PR, enlaza el caso de prueba de prompt injection y explica brevemente qué brechas quedaron pendientes y por qué.
+4. Solicita revisión a tu tech lead antes del sign-off final.
+>>>>>>> Stashed changes
