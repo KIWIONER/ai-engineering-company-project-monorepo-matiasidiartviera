@@ -39,45 +39,57 @@ def create_user(user:UserCreate):
 
     return response_data
 
+def _is_admin(current_user: dict) -> bool:
+    return current_user.get("role") == UserRole.admin.value
+
+def _require_admin_or_self(current_user: dict, target_user_id: str) -> None:
+    if _is_admin(current_user):
+        return
+    if str(current_user.get("id", "")) == str(target_user_id):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail= "No tienes permisos para accedes o modificar este usuario",
+    )
+
 @router.get("/", response_model=List[UserListItem])
 def get_all_users(current_user: dict = Depends(get_current_user)):
-    #TODO
+    if not _is_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden listar todos los usuarios",
+        )
     db = get_tinydb()
-    users= db.table('users').all()
+    users = db.table('users').all()
     profiles_table = db.table('profiles')
-
-    ProfileQuery= Query()
+    ProfileQuery = Query()
     for u in users:
         prof = profiles_table.search(ProfileQuery.user_id == u['id'])
         u['profile'] = prof[0] if prof else None
-    
-    return users
 
+    return users
 
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    # TODO:
+    _require_admin_or_self(current_user, user_id)
     user = get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
     db = get_tinydb()
     ProfileQuery = Query()
     prof = db.table('profiles').search(ProfileQuery.user_id == user_id)
     user['profile'] = prof[0] if prof else None
-    
+
     return user
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    # TODO:
+    _require_admin_or_self(current_user, user_id)
     user = get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
     db = get_tinydb()
     UserQuery = Query()
-
     db.table('users').remove(UserQuery.id == user_id)
     db.table('profiles').remove(UserQuery.user_id == user_id)
     return None

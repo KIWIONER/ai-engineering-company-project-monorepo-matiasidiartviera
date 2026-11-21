@@ -45,7 +45,7 @@ class TelemetryEventDB(SQLModel, table=True):
 
 
 @router.post("/events")
-def receive_telemetry(batch: RawTelemetryBatch, db: Session = Depends(get_db)):
+def receive_telemetry(batch: RawTelemetryBatch, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     received = len(batch.events)
     valid_records: list[Dict[str,Any]] = []
     rejected = 0
