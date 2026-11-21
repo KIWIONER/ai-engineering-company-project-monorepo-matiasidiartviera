@@ -96,3 +96,21 @@ El reconocimiento base (`bash skills/security-audit-suite/scripts/quick_security
 - **Step-Back & Invariantes:** Antes de editar archivos, se definieron invariantes *Default-Deny*, mínimo privilegio y aislamiento agéntico/HITL para evitar soluciones parciales.
 - **Chain of Verification (CoVe) & TDD:** Cada remediación será contrastada contra los archivos reales (`archivo:línea`) y validada con pruebas reproducibles (`uv run pytest` y `quick_security_scan.sh`) comparando el estado Antes vs. Después.
 - **Adversarial Red Teaming & Security Gate (Modo 4/5):** Se incorporan casos adversarios explícitos del briefing de Nexova (CVs con texto oculto, tickets maliciosos, contradicciones en confirmaciones HITL y fuga cross-tenant en RAG/MCP) y bloqueo pre-push ante hallazgos críticos/altos.
+
+---
+
+## 🔍 Postmortem — Hallazgos de Revisión y Remediación
+
+### 1. Brechas detectadas en revisión inicial (Rechazo de PR)
+1. **Evidencia de hardening solo documental:** existía `server-hardening-guide.md` y endurecimiento Docker, pero faltaban las salidas reales aplicadas en servidor (`sshd -T`, `id`, `stat`, `ufw status`, `ss -tlnp`).
+2. **OWASP A01 crítico abierto en capa agéntica y RAG:**
+   - `incidents_get_status` (`mcps/company_tools/tools_incidents.py`) validaba el scope `incidents:read`, pero no filtraba por `tenant_id`/`branch`.
+   - `POST /knowledge/query` (`services/api/routes/knowledge.py` + `data/pipelines/rag.py`) ejecutaba `retrieve(...)` sin filtrar por `role`, `department` o `tenant_id` del usuario autenticado.
+
+### 2. Causa raíz y solución aplicada
+- **Causa raíz:** confundir autenticación/scope general con autorización *default-deny* por recurso/tenant, y no haber validado el endurecimiento sobre el VPS real desde la Fase 1.
+- **Remediación:**
+  - Implementado `check_tenant_access(...)` en `mcps/company_tools/auth.py` y aplicado en `incidents_get_status` (HTTP + TinyDB).
+  - Implementado `_is_chunk_authorized(...)` en `data/pipelines/rag.py` conectado a `POST /knowledge/query` con `role`, `department` y `tenant_id` (y saneado el error HTTP 500).
+  - Añadidos tests de dos tenants en `tests/test_owasp_security_audit.py` (`43 passed` en `test_owasp_security_audit.py` + `test_mcp_server.py` + `test_rag.py` + `test_agent_guardrails.py`).
+  - Aplicado hardening real en VPS `bc-vps-238` (`104.248.36.5`) y adjuntadas las salidas Antes/Después en `docs/security/auditory-owasp-10/owasp-top10-audit-report.md` (§3.2).
