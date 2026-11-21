@@ -211,3 +211,55 @@ def test_resilience_zero_zombies_on_failure(mock_db, tmp_path, monkeypatch):
         # Verificar que CERO registros quedan en 'processing'
         zombies = conn.execute(text("SELECT count(*) FROM job_runs WHERE status = 'processing'")).scalar()
         assert zombies == 0
+
+
+def test_concurrent_lock_only_one_instance_acquires_via_unique_index(mock_db):
+    """
+    Test 5: Exclusión mutua atómica respaldada por índice parcial UNIQUE.
+    Si dos instancias intentan adquirir el lock a la vez, solo una tiene éxito
+    y la segunda recibe None para abortar silenciosamente.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    jr.ensure_job_runs_table_exists()
+
+    def _try_lock(_):
+        return jr.acquire_processing_lock("nightly_export", "2025-03-14")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(_try_lock, [1, 2]))
+
+    acquired = [r for r in results if r is not None]
+    rejected = [r for r in results if r is None]
+    assert len(acquired) == 1
+    assert len(rejected) == 1
+
+    with mock_db.connect() as conn:
+        count = conn.execute(
+            text("SELECT count(*) FROM job_runs WHERE job_name = 'nightly_export' AND status = 'processing'")
+        ).scalar()
+        assert count == 1
+
+
+def test_finally_guarantees_failed_on_base_exception(mock_db, tmp_path, monkeypatch):
+    """
+    Test 6: El bloque try/except/finally garantiza transición a 'failed' incluso ante
+    interrupciones BaseException (como KeyboardInterrupt), evitando registros zombis.
+    """
+    target_date = "2025-03-15"
+    monkeypatch.setenv("TARGET_DATE", target_date)
+    monkeypatch.setattr(sys, "argv", ["nightly_export.py"])
+    monkeypatch.setattr(ne, "BASE_DIR", str(tmp_path))
+
+    with patch.object(ne, "export_telemetry_csv", side_effect=KeyboardInterrupt("SIGTERM simulado")):
+        with pytest.raises(KeyboardInterrupt):
+            ne.main()
+
+    with mock_db.connect() as conn:
+        row = conn.execute(
+            text("SELECT status, error_message FROM job_runs WHERE target_date = :td"),
+            {"td": target_date},
+        ).mappings().first()
+        assert row is not None
+        assert row["status"] == "failed"
+        assert "SIGTERM simulado" in row["error_message"]
