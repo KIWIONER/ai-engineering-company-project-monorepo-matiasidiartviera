@@ -2,6 +2,7 @@
 Servidor MCP Oficial para Herramientas de Nexova Solutions.
 Expone herramientas protegidas por OAuth 2.1 vía Streamable HTTP / SSE.
 """
+import os
 import logging
 import uvicorn
 from starlette.requests import Request
@@ -17,6 +18,16 @@ from mcps.company_tools.auth import (
 from mcps.company_tools.tools_incidents import register_incident_tools
 from mcps.company_tools.tools_inventory import register_inventory_tools
 from starlette.middleware.cors import CORSMiddleware
+
+_raw_mcp_origins = os.getenv(
+    "MCP_ALLOWED_ORIGINS",
+    os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:3001,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:8000",
+    ),
+)
+MCP_ALLOWED_ORIGINS = [o.strip() for o in _raw_mcp_origins.split(",") if o.strip()]
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nexova.mcp_server")
@@ -40,17 +51,24 @@ register_inventory_tools(mcp)
 @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET", "OPTIONS"])
 async def protected_resource_metadata_route(request: Request) -> Response:
     """Retorna los metadatos de recurso protegido según RFC 9470 para discovery automático."""
+    origin = request.headers.get("origin", "")
+    cors_headers = {}
+    if origin in MCP_ALLOWED_ORIGINS:
+        cors_headers["Access-Control-Allow-Origin"] = origin
+        cors_headers["Vary"] = "Origin"
+
     if request.method == "OPTIONS":
         return Response(
             status_code=204,
             headers={
-                "Access-Control-Allow-Origin": "*",
+                **cors_headers,
                 "Access-Control-Allow-Methods": "GET, OPTIONS",
-                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Headers": "Authorization, Content-Type",
             },
         )
     resp = JSONResponse(get_protected_resource_metadata())
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    for k, v in cors_headers.items():
+        resp.headers[k] = v
     return resp
 
 
@@ -83,9 +101,9 @@ def create_app():
     app.add_middleware(get_mcp_auth_middleware())
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=MCP_ALLOWED_ORIGINS,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "Content-Type", "Mcp-Session-Id"],
         expose_headers=["Mcp-Session-Id", "WWW-Authenticate"],
     )
     return app

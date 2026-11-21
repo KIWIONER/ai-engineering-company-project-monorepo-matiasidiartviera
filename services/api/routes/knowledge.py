@@ -78,11 +78,14 @@ def query_knowledge_base(
     )
 
     try:
-        # Recuperación vectorial con umbral calibrado
+        # Recuperación vectorial con umbral calibrado y filtro por rol/departamento/tenant
         sources = retrieve(
             query=payload.question,
             k=payload.k,
             min_score=payload.min_score,
+            user_role=str(current_user.get("role", "user")),
+            user_department=current_user.get("department"),
+            user_tenant=current_user.get("tenant_id") or current_user.get("branch"),
         )
         # Generación condicionada al contexto
         answer = generate_answer(
@@ -109,5 +112,5 @@ def query_knowledge_base(
         logger.error(f"Error procesando consulta RAG: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno al consultar la base de conocimiento: {str(exc)}",
+            detail="Error interno al consultar la base de conocimiento.",
         )

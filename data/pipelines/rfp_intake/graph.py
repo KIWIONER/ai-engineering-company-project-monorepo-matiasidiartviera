@@ -5,18 +5,19 @@ Persistencia robusta en PostgreSQL/SQLModel.
 """
 from __future__ import annotations
 
+import base64
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
-import pickle
 import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
 from langgraph.checkpoint.base import ChannelVersions, Checkpoint, CheckpointMetadata
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, StateGraph
 from langgraph.types import Command
 from langchain_core.runnables import RunnableConfig
@@ -73,8 +74,20 @@ class SqliteCheckpointSaver(InMemorySaver):
         if self.db_path != ":memory:":
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        self._safe_serde = JsonPlusSerializer(pickle_fallback=False)
         self._init_db()
         self._load_all_from_db()
+
+    def _encode_safe(self, obj: Any) -> bytes:
+        type_name, payload = self._safe_serde.dumps_typed(obj)
+        envelope = {"t": type_name, "d": base64.b64encode(payload).decode("ascii")}
+        return json.dumps(envelope).encode("utf-8")
+
+    def _decode_safe(self, raw_blob: bytes) -> Any:
+        envelope = json.loads(bytes(raw_blob).decode("utf-8"))
+        return self._safe_serde.loads_typed(
+            (envelope["t"], base64.b64decode(envelope["d"]))
+        )
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path, check_same_thread=False)
@@ -99,25 +112,36 @@ class SqliteCheckpointSaver(InMemorySaver):
                 "SELECT thread_id, storage_blob, writes_blob, blobs_blob FROM rfp_thread_checkpoints"
             ).fetchall()
         for thread_id, s_blob, w_blob, b_blob in rows:
-            thread_storage = pickle.loads(s_blob)
+            thread_storage = self._decode_safe(s_blob)
             for ns, cps in thread_storage.items():
-                self.storage[thread_id][ns] = cps
-            thread_writes = pickle.loads(w_blob)
-            self.writes.update(thread_writes)
-            thread_blobs = pickle.loads(b_blob)
-            self.blobs.update(thread_blobs)
+                self.storage[thread_id][ns] = {
+                    cp_id: tuple(v) if isinstance(v, list) else v
+                    for cp_id, v in cps.items()
+                }
+            thread_writes = self._decode_safe(w_blob)
+            for k, v in thread_writes:
+                restored_writes = {
+                    (tuple(wk) if isinstance(wk, list) else wk): (
+                        tuple(wv) if isinstance(wv, list) else wv
+                    )
+                    for wk, wv in v.items()
+                }
+                self.writes[tuple(k)] = restored_writes
+            thread_blobs = self._decode_safe(b_blob)
+            for k, v in thread_blobs:
+                self.blobs[tuple(k)] = tuple(v) if isinstance(v, list) else v
 
     def _persist_thread(self, thread_id: str) -> None:
         with self._lock:
             thread_storage = {
                 ns: dict(cps) for ns, cps in self.storage.get(thread_id, {}).items()
             }
-            thread_writes = {
-                k: dict(v) for k, v in self.writes.items() if k[0] == thread_id
-            }
-            thread_blobs = {
-                k: v for k, v in self.blobs.items() if k[0] == thread_id
-            }
+            normalized_writes = [
+                (k, dict(v)) for k, v in self.writes.items() if k[0] == thread_id
+            ]
+            thread_blobs = [
+                (k, v) for k, v in self.blobs.items() if k[0] == thread_id
+            ]
             with self._connect() as conn:
                 conn.execute(
                     """
@@ -127,9 +151,9 @@ class SqliteCheckpointSaver(InMemorySaver):
                     """,
                     (
                         thread_id,
-                        pickle.dumps(thread_storage),
-                        pickle.dumps(thread_writes),
-                        pickle.dumps(thread_blobs),
+                        self._encode_safe(thread_storage),
+                        self._encode_safe(normalized_writes),
+                        self._encode_safe(thread_blobs),
                     ),
                 )
                 conn.commit()
