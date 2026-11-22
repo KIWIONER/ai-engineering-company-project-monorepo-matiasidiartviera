@@ -30,6 +30,7 @@ Previene la exposición accidental de endpoints sensibles.
   current_user: dict = Depends(get_current_user)
   ```
 - Si el usuario te pide crear una ruta y no menciona nada sobre seguridad, **debes protegerla de todas formas** e informarle que lo hiciste por seguridad.
+- **Autorización por Recurso y Matriz R/W (Anti-IDOR):** `Depends(get_current_user)` o `check_tool_scope(...)` solo validan identidad o scope, **no propiedad**. Todo endpoint (`GET`, `POST`, `PATCH`, `PUT`, `DELETE`) y toda tool MCP que reciba un identificador de recurso (`id`, `ticket_id`, `candidate_id`, etc.) debe validar del lado del servidor el `tenant_id` / propietario / rol (*fail-closed* con `403`), tanto en **lectura** como en **escritura/mutación**, y contar con al menos un test automatizado cross-tenant/cross-user que verifique el rechazo `403` antes de dar por cerrado el PR.
 
 ## 4. Security Audit Guard (Auditoría Continua — `security-audit-suite`)
 La skill [`skills/security-audit-suite/SKILL.md`](skills/security-audit-suite/SKILL.md) está **activa de forma permanente** en este proyecto como auditor de seguridad en 3 capas (Web/API OWASP 2025, LLM/Agentes OWASP 2026 y Servidor/Despliegue), incluso si el usuario no la invoca explícitamente:
