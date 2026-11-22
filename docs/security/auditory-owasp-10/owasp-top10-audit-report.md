@@ -1,8 +1,8 @@
 
 # Informe de Auditoría de Seguridad OWASP Top 10 & Endurecimiento — Nexova
 
-- **Fecha:** `2026-11-21`
-- **Rama / Commit:** `feature/owasp-top10-audit` (`a8b9328`)
+- **Fecha:** `2026-11-22`
+- **Rama / Commit:** `feature/owasp-top10-audit` (actualizado tras cierre A01 de escritura)
 - **Alcance Auditado:**
   - **Carril Backend:** `services/api/`, `services/celery_app.py`, `services/job_runner.py`, `data/pipelines/`
   - **Carril Frontend:** `uis/website/`, `uis/backoffice/`, `uis/talent-pipeline-tracker/`, `admin/`
@@ -17,7 +17,7 @@
 ## 0. Línea Base (Baseline — Estado "Antes" sin modificar código)
 
 ### 0.1 Reconocimiento Estático (`quick_security_scan.sh`)
-Ejecutado `bash skills/security-audit-suite/scripts/quick_security_scan.sh .` sobre commit `a8b9328`:
+Ejecutado `bash skills/security-audit-suite/scripts/quick_security_scan.sh .` sobre `feature/owasp-top10-audit`:
 - **Secretos hardcoded / claves privadas:** `[OK]` Sin coincidencias.
 - **CORS permisivo con comodín (`*`):**
   - `services/api/main.py:104` (`allow_origins=["*"]`)
@@ -119,7 +119,7 @@ Ejecutado `bash skills/security-audit-suite/scripts/quick_security_scan.sh .` so
 | SEC-03 | `Infraestructura · OWASP A05` | **CRÍTICA** | `docker-compose.yml`, `services/Dockerfile`, `uis/Dockerfile` | Usuarios no-root (`appuser`, `node`), versión fijada `mher/flower:2.0` y puertos internos atados a `127.0.0.1` | **Corregido** |
 | SEC-04 | `Backend · OWASP A01` | **CRÍTICA** | `services/api/routes/users.py`, `services/api/routes/telemetry.py` | Anti-IDOR (`_require_admin_or_self` / `_is_admin` con `403`) y `Depends(get_current_user)` en `/telemetry/events` | **Corregido** |
 | SEC-05 | `Backend · OWASP A02` | **CRÍTICA** | `services/api/security.py` | Eliminado fallback hardcoded de `SECRET_KEY` (*fail-secure* con `RuntimeError` en producción; clave efímera en `pytest`) | **Corregido** |
-| SEC-06 | `Sistema Agéntico · OWASP A01/LLM01/LLM06` | **CRÍTICA** | `mcps/company_tools/auth.py`, `mcps/company_tools/tools_incidents.py`, `data/pipelines/rag.py`, `services/api/routes/knowledge.py`, `services/agent/guardrails.py` | Autorización *default-deny* por `tenant_id`/rol/departamento en `incidents_get_status` y `/knowledge/query`, bloqueo de Prompt Injection (CV + ticket) y HITL | **Corregido** |
+| SEC-06 | `Sistema Agéntico y API · OWASP A01/LLM01/LLM06` | **CRÍTICA** | `mcps/company_tools/auth.py`, `mcps/company_tools/tools_incidents.py`, `services/api/routes/incidents.py`, `data/pipelines/rag.py`, `services/api/routes/knowledge.py`, `services/agent/guardrails.py` | Autorización *default-deny* por `tenant_id`/rol/departamento en lectura y escritura (`incidents_get_status`, `incidents_update_status`, `PATCH /api/incidents/{id}/status` y `/knowledge/query`), bloqueo de Prompt Injection (CV + ticket) y HITL | **Corregido** |
 | SEC-07 | `Frontend Legacy · OWASP A03` | **ALTA** | `admin/tickets.js` | Escapado `escapeHtml(...)` en `card.innerHTML` y limpieza con `replaceChildren()` | **Corregido** |
 
 ### 3.1 Evidencia Reproducible en Código y Tests (Antes vs. Después)
@@ -128,7 +128,7 @@ Ejecutado `bash skills/security-audit-suite/scripts/quick_security_scan.sh .` so
    - **Antes:** `allow_origins=["*"]` en `services/api/main.py` y `mcps/company_tools/server.py`; `pickle.loads` en `data/pipelines/rfp_intake/graph.py`; `mher/flower:latest` y puertos `6379/5555/6333/6334` sin `127.0.0.1` en `docker-compose.yml`.
    - **Después:** 0 coincidencias en código de CORS `*`, `pickle.loads` e imágenes `:latest`; puertos internos atados a `127.0.0.1`.
 2. **Suite Automatizada (`uv run pytest tests/test_owasp_security_audit.py tests/test_mcp_server.py tests/pipelines/test_rag.py tests/pipelines/test_agent_guardrails.py -v`):**
-   - **Resultado:** **`43 passed`** (incluye pruebas de dos tenants para `incidents_get_status` —`valencia` vs `miami`— y para `/knowledge/query` —`soporte/valencia` vs `rrhh/miami`—, además de SEC-01 a SEC-06, MCP OAuth y guardrails).
+   - **Resultado:** **`48 passed`** (13 en `test_owasp_security_audit.py` sin duplicados + 11 en `test_mcp_server.py` + 8 en `test_rag.py` + 16 en `test_agent_guardrails.py`; incluye aislamiento multi-tenant en lectura y escritura para `PATCH /api/incidents/{id}/status` e `incidents_update_status` —`valencia` vs `miami`—, `/knowledge/query`, SEC-01 a SEC-11, MCP OAuth y guardrails).
 
 ### 3.2 Evidencia Aplicada de Endurecimiento en Servidor (`bc-vps-238` · Ubuntu 22.04.5 LTS)
 

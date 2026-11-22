@@ -217,6 +217,11 @@ def register_incident_tools(mcp: FastMCP) -> None:
                     error_detail = res.json().get("detail", "Transición no válida")
                     log_tool_invocation(tool_name, client_id, "INVALID_TRANSITION", {"error": error_detail})
                     return {"error": "invalid_transition", "message": error_detail}
+                elif res.status_code == 403:
+                    log_tool_invocation(tool_name, client_id, "FORBIDDEN_TENANT", {"ticket_id": clean_id})
+                    raise PermissionError("Permiso denegado (403 Forbidden): Acceso cross-tenant bloqueado.")
+        except PermissionError:
+            raise
         except Exception:
             logger.debug("Backend HTTP no disponible, aplicando transición en base de datos local...")
 
@@ -231,6 +236,8 @@ def register_incident_tools(mcp: FastMCP) -> None:
             return {"error": "not_found", "message": f"Incidencia '{clean_id}' no encontrada."}
 
         current_record = results[0]
+        resource_tenant = current_record.get("tenant_id") or current_record.get("branch")
+        check_tenant_access(auth_info, resource_tenant, tool_name)
         current_status = current_record.get("status")
 
         if current_status == target_status.value:
