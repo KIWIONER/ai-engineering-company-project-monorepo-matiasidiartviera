@@ -1,10 +1,17 @@
 import os
 from datetime import datetime, timedelta
 from typing import Optional
+from dotenv import load_dotenv
 from jose import jwt
 from passlib.hash import bcrypt
 
-SECRET_KEY = os.getenv("SECRET_KEY", "mi_clave_secreta_super_segura_que_nadie_sabe")
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY no está configurada. Defínela en .env o como variable del entorno"
+    )
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
