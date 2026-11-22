@@ -56,6 +56,7 @@ echo "Objetivo: $TARGET_DIR"
 
 section "1. OWASP Web 2025 — Secretos, Misconfiguración y Sumideros Peligrosos"
 scan_grep "Posibles Claves Hardcodeadas / Claves Privadas" "(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,})"
+scan_grep "Fallbacks Hardcodeados en Secretos / JWT / Passwords" "(os\.getenv|os\.environ\.get)\([^)]*(SECRET|PASSWORD|JWT_SECRET|API_KEY)[^)]*,\s*['\"][^'\"]+['\"]"
 scan_grep "CORS Permisivo con Comodín (*)" "(allow_origins\s*=\s*\[\s*['\"]\*['\"]|origin:\s*['\"]\*['\"]|Access-Control-Allow-Origin.*\*)"
 scan_grep "Flags de Debug Activados" "(debug\s*=\s*True|DEBUG\s*=\s*(true|True|1)|app\.run\(.*debug=True)"
 scan_grep "Sumideros Peligrosos de Ejecución / Deserialización (SQLi/RCE/XSS)" "(shell\s*=\s*True|pickle\.loads?\(|yaml\.load\([^)]*\)|dangerouslySetInnerHTML|innerHTML\s*=|\beval\()"
