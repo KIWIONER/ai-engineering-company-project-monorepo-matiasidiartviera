@@ -180,33 +180,45 @@ def transition_to_processing(run_id: str) -> None:
 
 def acquire_processing_lock(job_name: str, target_date: Union[date, str]) -> Optional[str]:
     """
-    Adquiere de forma atómica el lock distribuido en 'job_runs' respaldado por
-    el índice parcial UNIQUE (uq_job_runs_active_lock).
-    Si dos instancias compiten a la vez, solo una inserta en 'processing';
-    la segunda recibe IntegrityError y retorna None para abortar silenciosamente.
+    Crea primero la fila en estado 'pending' y ejecuta la transición atómica
+    'pending' -> 'processing' respaldada por el índice parcial UNIQUE
+    (uq_job_runs_active_lock).
+    Si dos instancias compiten a la vez, solo una logra pasar a 'processing';
+    la segunda recibe IntegrityError, marca su fila como 'failed' y retorna None.
     """
     ensure_job_runs_table_exists()
-    run_id = str(uuid.uuid4())
-    date_str = _normalize_date_str(target_date)
+    run_id = create_job_run(
+        job_name=job_name,
+        target_date=target_date,
+        initial_status="pending",
+    )
     now_utc = datetime.now(timezone.utc)
 
     query = text("""
-        INSERT INTO job_runs (id, job_name, target_date, status, started_at, created_at)
-        VALUES (:id, :job_name, :target_date, 'processing', :started_at, :created_at)
+        UPDATE job_runs
+        SET status = 'processing', started_at = :started_at
+        WHERE id = :id AND status = 'pending'
     """)
     try:
         with engine.begin() as conn:
             conn.execute(query, {
                 "id": run_id,
-                "job_name": job_name,
-                "target_date": date_str,
                 "started_at": now_utc,
-                "created_at": now_utc,
             })
-        logger.info(f"🔒 Lock atómico adquirido ('processing') [ID: {run_id}] | Job: '{job_name}' | Fecha: {date_str}")
+        logger.info(
+            f"🔒 Transición atómica 'pending' -> 'processing' (Lock adquirido) "
+            f"[ID: {run_id}] | Job: '{job_name}'"
+        )
         return run_id
     except IntegrityError:
-        logger.warning(f"🔒 Contención de lock detectada por UNIQUE en '{job_name}'. Otra instancia ya está en 'processing'.")
+        logger.warning(
+            f"🔒 Contención de lock detectada por UNIQUE en '{job_name}'. "
+            f"Otra instancia ya está en 'processing'."
+        )
+        mark_failed(
+            run_id,
+            "Contención de lock: otra instancia ya se encuentra en estado 'processing'.",
+        )
         return None
 
 

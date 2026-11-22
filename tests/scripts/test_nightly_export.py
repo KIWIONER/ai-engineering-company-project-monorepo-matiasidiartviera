@@ -263,3 +263,49 @@ def test_finally_guarantees_failed_on_base_exception(mock_db, tmp_path, monkeypa
         assert row is not None
         assert row["status"] == "failed"
         assert "SIGTERM simulado" in row["error_message"]
+
+
+def test_acquire_processing_lock_transitions_pending_to_processing(mock_db):
+    """
+    Test 7: Verifica que acquire_processing_lock crea primero el registro en 'pending'
+    y realiza la transición atómica 'pending' -> 'processing' protegida por el índice UNIQUE.
+    """
+    from sqlalchemy import event
+
+    jr.ensure_job_runs_table_exists()
+    observed_ops = []
+
+    def _capture_sql(conn, cursor, statement, parameters, context, executemany):
+        normalized = " ".join(statement.split())
+        if "INSERT INTO job_runs" in normalized:
+            status_val = parameters.get("status") if isinstance(parameters, dict) else parameters[3]
+            observed_ops.append(("insert", status_val))
+        elif "UPDATE job_runs SET status = 'processing'" in normalized:
+            id_val = parameters.get("id") if isinstance(parameters, dict) else parameters[1]
+            observed_ops.append(("update_processing", id_val))
+
+    event.listen(mock_db, "before_cursor_execute", _capture_sql)
+    try:
+        run_id = jr.acquire_processing_lock("nightly_export", "2025-03-16")
+        assert run_id is not None
+
+        # Verificar que primero se insertó 'pending' y luego se transicionó a 'processing'
+        assert ("insert", "pending") in observed_ops
+        assert ("update_processing", run_id) in observed_ops
+        assert observed_ops.index(("insert", "pending")) < observed_ops.index(("update_processing", run_id))
+
+        # Una segunda instancia debe ser bloqueada por uq_job_runs_active_lock y retornar None
+        second_run_id = jr.acquire_processing_lock("nightly_export", "2025-03-16")
+        assert second_run_id is None
+    finally:
+        event.remove(mock_db, "before_cursor_execute", _capture_sql)
+
+    with mock_db.connect() as conn:
+        processing_count = conn.execute(
+            text("SELECT count(*) FROM job_runs WHERE job_name = 'nightly_export' AND status = 'processing'")
+        ).scalar()
+        assert processing_count == 1
+        pending_count = conn.execute(
+            text("SELECT count(*) FROM job_runs WHERE job_name = 'nightly_export' AND status = 'pending'")
+        ).scalar()
+        assert pending_count == 0

@@ -1,1 +1,6 @@
 id,timestamp,event_type,tags
+c593b241b8ae431a9070ce814489e04b,2025-01-15 08:14:22,rag_query_executed,"{""department"": ""soporte"", ""score"": 0.89}"
+153eb74e5db64b81963384dc06c506d9,2025-01-15 09:45:10,incident_created,"{""branch"": ""valencia"", ""category"": ""fallo_operativo""}"
+73145e76dcbd47bab6b2c1a0d79aee22,2025-01-15 11:20:05,candidate_scored,"{""position"": ""Backend Developer"", ""score_ia"": 92}"
+3930d3d54830438ebf8fc9a3f62bb924,2025-01-15 15:02:41,outbound_order_completed,"{""sku"": ""LT-MBP-M3"", ""units"": 2}"
+729463f8fdf545c29ad801818829091a,2025-01-15 18:30:19,rfp_analysis_completed,"{""client"": ""NubeSoft"", ""departments"": [""soporte""]}"
