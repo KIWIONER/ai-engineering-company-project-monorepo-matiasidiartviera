@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone, date
 from typing import Optional, Dict, Any, Union
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 # Asegurar importaciones relativas desde la raíz del monorepo
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
@@ -52,6 +53,11 @@ def ensure_job_runs_table_exists() -> None:
                 CREATE INDEX IF NOT EXISTS idx_job_runs_status 
                     ON public.job_runs (job_name, status);
             """))
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_job_runs_active_lock
+                    ON public.job_runs (job_name)
+                    WHERE status = 'processing';
+            """))
         else:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS job_runs (
@@ -72,6 +78,11 @@ def ensure_job_runs_table_exists() -> None:
             conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS idx_job_runs_status 
                     ON job_runs (job_name, status);
+            """))
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_job_runs_active_lock
+                    ON job_runs (job_name)
+                    WHERE status = 'processing';
             """))
     logger.debug("✅ Tabla job_runs verificada/creada correctamente en la base de datos.")
 
@@ -165,6 +176,50 @@ def transition_to_processing(run_id: str) -> None:
             "started_at": now_utc
         })
     logger.info(f"🔒 Transición a 'processing' (Lock adquirido) [ID: {run_id}]")
+
+
+def acquire_processing_lock(job_name: str, target_date: Union[date, str]) -> Optional[str]:
+    """
+    Crea primero la fila en estado 'pending' y ejecuta la transición atómica
+    'pending' -> 'processing' respaldada por el índice parcial UNIQUE
+    (uq_job_runs_active_lock).
+    Si dos instancias compiten a la vez, solo una logra pasar a 'processing';
+    la segunda recibe IntegrityError, marca su fila como 'failed' y retorna None.
+    """
+    ensure_job_runs_table_exists()
+    run_id = create_job_run(
+        job_name=job_name,
+        target_date=target_date,
+        initial_status="pending",
+    )
+    now_utc = datetime.now(timezone.utc)
+
+    query = text("""
+        UPDATE job_runs
+        SET status = 'processing', started_at = :started_at
+        WHERE id = :id AND status = 'pending'
+    """)
+    try:
+        with engine.begin() as conn:
+            conn.execute(query, {
+                "id": run_id,
+                "started_at": now_utc,
+            })
+        logger.info(
+            f"🔒 Transición atómica 'pending' -> 'processing' (Lock adquirido) "
+            f"[ID: {run_id}] | Job: '{job_name}'"
+        )
+        return run_id
+    except IntegrityError:
+        logger.warning(
+            f"🔒 Contención de lock detectada por UNIQUE en '{job_name}'. "
+            f"Otra instancia ya está en 'processing'."
+        )
+        mark_failed(
+            run_id,
+            "Contención de lock: otra instancia ya se encuentra en estado 'processing'.",
+        )
+        return None
 
 
 def mark_completed(run_id: str) -> None:

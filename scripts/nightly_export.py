@@ -31,8 +31,7 @@ from services.job_runner import (
     ensure_job_runs_table_exists,
     has_processing_lock,
     has_completed_for_date,
-    create_job_run,
-    transition_to_processing,
+    acquire_processing_lock,
     mark_completed,
     mark_failed,
 )
@@ -164,11 +163,18 @@ def main() -> int:
         )
         return 0
 
-    # 3. Transición a 'pending' y adquisición de lock ('processing')
-    run_id = create_job_run(JOB_NAME, target_date, initial_status="pending")
-    transition_to_processing(run_id)
+    # 3. Adquisición atómica de lock ('processing') respaldada por índice UNIQUE
+    run_id = acquire_processing_lock(JOB_NAME, target_date)
+    if run_id is None:
+        logger.warning(
+            f"🔒 Lock concurrente detectado por índice UNIQUE para '{JOB_NAME}'. "
+            "Abortando silenciosamente para evitar ejecuciones paralelas."
+        )
+        return 0
 
-    # 4. Ejecución del flujo bajo bloque de resiliencia (cero zombis)
+    # 4. Ejecución del flujo bajo bloque try/except/finally (garantiza transición a 'failed')
+    completed = False
+    error_msg: Optional[str] = None
     try:
         # Paso A: Exportar backup CSV a data/raw/
         export_telemetry_csv(target_date)
@@ -178,14 +184,20 @@ def main() -> int:
 
         # Paso C: Marcar como completado y liberar lock
         mark_completed(run_id)
+        completed = True
         logger.info(f"🏁 Proceso nocturno completado con éxito para {target_date} [Run ID: {run_id}].")
         return 0
 
-    except Exception as exc:
-        err_msg = str(exc)
-        logger.error(f"💥 Error crítico durante la ejecución de '{JOB_NAME}': {err_msg}")
-        mark_failed(run_id, err_msg)
+    except BaseException as exc:
+        error_msg = str(exc) or exc.__class__.__name__
+        logger.error(f"💥 Error crítico durante la ejecución de '{JOB_NAME}': {error_msg}")
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
         return 1
+
+    finally:
+        if not completed:
+            mark_failed(run_id, error_msg or "Ejecución interrumpida sin completar")
 
 
 if __name__ == "__main__":

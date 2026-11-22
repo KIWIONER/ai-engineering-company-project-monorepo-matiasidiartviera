@@ -155,3 +155,46 @@ flowchart TD
 
 4. **Red Teaming & Resilience Audit (PACK 4: AUDITOR):**
    Se someterá el runner a pruebas de interrupción abrupta (`SIGTERM`, fallo de conexión a BD, excepción en subprocess) para verificar que el bloque defensivo garantice la transición a `failed` y la liberación del lock para la noche siguiente. Se respetará la regla inviolable de cero auto-push.
+
+---
+
+## 📦 Evidencias de Entrega (`cronjob`)
+
+- **Etiqueta del PR / Tarea:** `cronjob`
+- **Crontab configurado:** [`infra/cron/nightly_export.cron`](../../infra/cron/nightly_export.cron) (`0 2 * * *`)
+
+### 1. Fragmento del CSV generado (`data/raw/telemetry_2025-01-15.csv`)
+```csv
+id,timestamp,event_type,tags
+c593b241b8ae431a9070ce814489e04b,2025-01-15 08:14:22,rag_query_executed,"{""department"": ""soporte"", ""score"": 0.89}"
+153eb74e5db64b81963384dc06c506d9,2025-01-15 09:45:10,incident_created,"{""branch"": ""valencia"", ""category"": ""fallo_operativo""}"
+73145e76dcbd47bab6b2c1a0d79aee22,2025-01-15 11:20:05,candidate_scored,"{""position"": ""Backend Developer"", ""score_ia"": 92}"
+3930d3d54830438ebf8fc9a3f62bb924,2025-01-15 15:02:41,outbound_order_completed,"{""sku"": ""LT-MBP-M3"", ""units"": 2}"
+729463f8fdf545c29ad801818829091a,2025-01-15 18:30:19,rfp_analysis_completed,"{""client"": ""NubeSoft"", ""departments"": [""soporte""]}"
+```
+
+### 2. Log real de ejecución exitosa (`pending -> processing -> completed`)
+```text
+2026-11-22 11:39:02 [INFO] [nightly_export] =================================================================
+2026-11-22 11:39:02 [INFO] [nightly_export] 🚀 Iniciando orquestador nocturno de telemetría (nightly_export)
+2026-11-22 11:39:02 [INFO] [nightly_export] =================================================================
+2026-11-22 11:39:02 [INFO] [nightly_export] 📅 Fecha objetivo recibida por argumento CLI: 2025-01-15
+2026-11-22 11:39:02 [INFO] [nightly_export] 📝 Registro job_run creado: [ID: b5f00326-9b1d-4861-84ac-36e578ede2e2] | Job: 'nightly_export' | Fecha: 2025-01-15 | Estado: pending
+2026-11-22 11:39:02 [INFO] [nightly_export] 🔒 Transición atómica 'pending' -> 'processing' (Lock adquirido) [ID: b5f00326-9b1d-4861-84ac-36e578ede2e2] | Job: 'nightly_export'
+2026-11-22 11:39:02 [INFO] [nightly_export] 📥 Exportando telemetría desde BD para el rango [2025-01-15 00:00:00 - 2025-01-15 23:59:59]...
+2026-11-22 11:39:02 [INFO] [nightly_export] 💾 Snapshot CSV guardado con éxito: data/raw/telemetry_2025-01-15.csv (5 filas exportadas).
+2026-11-22 11:39:02 [INFO] [nightly_export] ⚙️ Disparando pipeline como subproceso: python data/pipelines/pipeline.py 2025-01-15
+2026-11-22 11:39:17 [INFO] [nightly_export] ✅ Subproceso del pipeline finalizado exitosamente.
+2026-11-22 11:39:18 [INFO] [nightly_export] ✅ Transición a 'completed' (Lock liberado) [ID: b5f00326-9b1d-4861-84ac-36e578ede2e2]
+2026-11-22 11:39:18 [INFO] [nightly_export] 🏁 Proceso nocturno completado con éxito para 2025-01-15 [Run ID: b5f00326-9b1d-4861-84ac-36e578ede2e2].
+```
+
+### 3. Log real de fallo controlado (`pending -> processing -> failed`, cero zombis)
+```text
+2026-11-22 11:38:13 [INFO] [nightly_export] 📅 Fecha objetivo recibida por argumento CLI: 2025-01-15
+2026-11-22 11:38:13 [INFO] [nightly_export] 📝 Registro job_run creado: [ID: 9ab2bb2f-dd1d-4057-8787-24ec1f8d6464] | Job: 'nightly_export' | Fecha: 2025-01-15 | Estado: pending
+2026-11-22 11:38:13 [INFO] [nightly_export] 🔒 Transición atómica 'pending' -> 'processing' (Lock adquirido) [ID: 9ab2bb2f-dd1d-4057-8787-24ec1f8d6464] | Job: 'nightly_export'
+2026-11-22 11:38:13 [INFO] [nightly_export] ⚙️ Disparando pipeline como subproceso: python data/pipelines/pipeline.py 2025-01-15
+2026-11-22 11:38:48 [ERROR] [nightly_export] El subproceso del pipeline falló con código de salida 1.
+2026-11-22 11:38:48 [ERROR] [nightly_export] ❌ Transición a 'failed' (Lock liberado) [ID: 9ab2bb2f-dd1d-4057-8787-24ec1f8d6464] | Motivo: Fallo en ejecución del pipeline
+```

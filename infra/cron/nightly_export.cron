@@ -1,0 +1,8 @@
+# Crontab oficial para el Script Nocturno de Telemetría (Ticket #DEV-53)
+# Ejecuta todos los días a las 02:00 UTC de forma independiente a la API FastAPI.
+# Instalación en servidor Linux: crontab infra/cron/nightly_export.cron
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
+0 2 * * * cd /opt/nexova/app && /usr/local/bin/uv run python scripts/nightly_export.py >> /var/log/nexova/nightly_export.log 2>&1

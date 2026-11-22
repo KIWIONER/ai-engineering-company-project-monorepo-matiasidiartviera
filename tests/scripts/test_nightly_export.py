@@ -211,3 +211,101 @@ def test_resilience_zero_zombies_on_failure(mock_db, tmp_path, monkeypatch):
         # Verificar que CERO registros quedan en 'processing'
         zombies = conn.execute(text("SELECT count(*) FROM job_runs WHERE status = 'processing'")).scalar()
         assert zombies == 0
+
+
+def test_concurrent_lock_only_one_instance_acquires_via_unique_index(mock_db):
+    """
+    Test 5: Exclusión mutua atómica respaldada por índice parcial UNIQUE.
+    Si dos instancias intentan adquirir el lock a la vez, solo una tiene éxito
+    y la segunda recibe None para abortar silenciosamente.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    jr.ensure_job_runs_table_exists()
+
+    def _try_lock(_):
+        return jr.acquire_processing_lock("nightly_export", "2025-03-14")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(_try_lock, [1, 2]))
+
+    acquired = [r for r in results if r is not None]
+    rejected = [r for r in results if r is None]
+    assert len(acquired) == 1
+    assert len(rejected) == 1
+
+    with mock_db.connect() as conn:
+        count = conn.execute(
+            text("SELECT count(*) FROM job_runs WHERE job_name = 'nightly_export' AND status = 'processing'")
+        ).scalar()
+        assert count == 1
+
+
+def test_finally_guarantees_failed_on_base_exception(mock_db, tmp_path, monkeypatch):
+    """
+    Test 6: El bloque try/except/finally garantiza transición a 'failed' incluso ante
+    interrupciones BaseException (como KeyboardInterrupt), evitando registros zombis.
+    """
+    target_date = "2025-03-15"
+    monkeypatch.setenv("TARGET_DATE", target_date)
+    monkeypatch.setattr(sys, "argv", ["nightly_export.py"])
+    monkeypatch.setattr(ne, "BASE_DIR", str(tmp_path))
+
+    with patch.object(ne, "export_telemetry_csv", side_effect=KeyboardInterrupt("SIGTERM simulado")):
+        with pytest.raises(KeyboardInterrupt):
+            ne.main()
+
+    with mock_db.connect() as conn:
+        row = conn.execute(
+            text("SELECT status, error_message FROM job_runs WHERE target_date = :td"),
+            {"td": target_date},
+        ).mappings().first()
+        assert row is not None
+        assert row["status"] == "failed"
+        assert "SIGTERM simulado" in row["error_message"]
+
+
+def test_acquire_processing_lock_transitions_pending_to_processing(mock_db):
+    """
+    Test 7: Verifica que acquire_processing_lock crea primero el registro en 'pending'
+    y realiza la transición atómica 'pending' -> 'processing' protegida por el índice UNIQUE.
+    """
+    from sqlalchemy import event
+
+    jr.ensure_job_runs_table_exists()
+    observed_ops = []
+
+    def _capture_sql(conn, cursor, statement, parameters, context, executemany):
+        normalized = " ".join(statement.split())
+        if "INSERT INTO job_runs" in normalized:
+            status_val = parameters.get("status") if isinstance(parameters, dict) else parameters[3]
+            observed_ops.append(("insert", status_val))
+        elif "UPDATE job_runs SET status = 'processing'" in normalized:
+            id_val = parameters.get("id") if isinstance(parameters, dict) else parameters[1]
+            observed_ops.append(("update_processing", id_val))
+
+    event.listen(mock_db, "before_cursor_execute", _capture_sql)
+    try:
+        run_id = jr.acquire_processing_lock("nightly_export", "2025-03-16")
+        assert run_id is not None
+
+        # Verificar que primero se insertó 'pending' y luego se transicionó a 'processing'
+        assert ("insert", "pending") in observed_ops
+        assert ("update_processing", run_id) in observed_ops
+        assert observed_ops.index(("insert", "pending")) < observed_ops.index(("update_processing", run_id))
+
+        # Una segunda instancia debe ser bloqueada por uq_job_runs_active_lock y retornar None
+        second_run_id = jr.acquire_processing_lock("nightly_export", "2025-03-16")
+        assert second_run_id is None
+    finally:
+        event.remove(mock_db, "before_cursor_execute", _capture_sql)
+
+    with mock_db.connect() as conn:
+        processing_count = conn.execute(
+            text("SELECT count(*) FROM job_runs WHERE job_name = 'nightly_export' AND status = 'processing'")
+        ).scalar()
+        assert processing_count == 1
+        pending_count = conn.execute(
+            text("SELECT count(*) FROM job_runs WHERE job_name = 'nightly_export' AND status = 'pending'")
+        ).scalar()
+        assert pending_count == 0
