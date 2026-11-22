@@ -120,7 +120,11 @@ def test_incidents_create_and_lifecycle():
         test_mcp = FastMCP("test_incidents")
         register_incident_tools(test_mcp)
 
-        token = create_access_token(client_id="incident-manager", scopes=[settings.scope_incidents_write, settings.scope_incidents_read])
+        token = create_access_token(
+            client_id="incident-manager",
+            scopes=[settings.scope_incidents_write, settings.scope_incidents_read],
+            tenant_id="central",
+        )
         from mcps.company_tools.auth import verify_access_token
         verified_auth = verify_access_token(token)
         mcp_auth._context_var.set(verified_auth)

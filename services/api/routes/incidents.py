@@ -99,11 +99,24 @@ def update_status(id: str, update: IncidentUpdateStatus, current_user: dict = De
     incidents_table = db.table('incidents')
     IncidentQ = Query()
     result = incidents_table.search(IncidentQ.id == id)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Incidencia no encontrada")
-        
+
     current_record = result[0]
+    role_raw = current_user.get("role", "user")
+    role = str(getattr(role_raw, "value", role_raw)).lower()
+    if role != "admin":
+        caller_raw = current_user.get("tenant_id") or current_user.get("branch") or ""
+        target_raw = current_record.get("tenant_id") or current_record.get("branch") or ""
+        caller_tenant = str(getattr(caller_raw, "value", caller_raw)).strip().lower()
+        target_tenant = str(getattr(target_raw, "value", target_raw)).strip().lower()
+        if not caller_tenant or not target_tenant or caller_tenant != target_tenant:
+            raise HTTPException(
+                status_code=403,
+                detail="No tienes permiso para modificar incidencias de otro tenant.",
+            )
+
     current_status = current_record.get('status')
     new_status = update.status
     

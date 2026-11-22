@@ -76,7 +76,7 @@ Lee los archivos correspondientes en `./references/` y contrasta cada control co
 
 ### Paso 5: Verificación Activa y Adversaria
 Nunca te conformes con leer el código. Prueba activamente o añade tests automatizados para:
-1. **Acceso sin Autenticación / Otro Usuario:** Llama a cada endpoint protegido (HTTP, SSE, WebSocket) sin token (`401` / WS `1008`), con token inválido y con el token de **otro usuario** (`403` anti-IDOR).
+1. **Acceso sin Autenticación / Otro Usuario (Lectura y Escritura):** Lista todos los endpoints (`GET`, `POST`, `PATCH`, `PUT`, `DELETE`) y tools MCP con parámetro `{id}` y prueba cada uno sin token (`401` / WS `1008`), con token inválido y con el token de **otro usuario o tenant** (`403` anti-IDOR), cubriendo explícitamente tanto operaciones de lectura como de mutación.
 2. **Simulación *Fail-Open*:** Fuerza una excepción o timeout en un validador, guardrail o verificación de pago/autorización y confirma que la solicitud se **niega** devolviendo un error genérico sin trazas de pila.
 3. **Entradas Adversarias:** Prueba inyección indirecta de prompt, caracteres Unicode invisibles, nombres de archivo con *path traversal* (`../../etc/passwd`) y bucles/entradas sobredimensionadas.
 4. **Inyección de Fallos (*Chaos* Ligero — Nivel 5):** En sistemas distribuidos/multi-agente, simula la caída o timeout de Redis, Qdrant, DB o de un worker en mitad de un flujo paralelo y verifica que no se filtre contexto, no se corrompa el estado compartido y se respete la política *fail-secure* y de *rollback*.

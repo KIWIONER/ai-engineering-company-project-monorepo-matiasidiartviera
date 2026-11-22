@@ -105,14 +105,21 @@ guardrail_tracker = GuardrailTracker()
 _JAILBREAK_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
     (
         re.compile(
-            r"(ignora|olvida|descarta|anula)\s+(todas\s+)?(las|tus)\s+(instrucciones|reglas|directrices)",
+            r"(ignora|olvida|descarta|anula)\s+(todas\s+)?(las|los|tus|el)\s+(instrucciones|reglas|directrices|pol[ií]ticas(?:\s+de\s+la\s+empresa)?|proceso(?:\s+de\s+scoring)?)",
             re.IGNORECASE,
         ),
-        "Intento de anular las instrucciones del sistema.",
+        "Intento de anular las instrucciones, políticas o proceso de evaluación del sistema.",
     ),
     (
         re.compile(
-            r"(ignore|forget|disregard|override)\s+(all\s+)?(previous|prior|your)\s+(instructions|rules|prompts?)",
+            r"(m[aá]rcame|calif[ií]came|ponme|punt[uú]ame)\s+como\s+(el\s+)?(candidato\s+)?(mejor\s+calificado|n[uú]mero\s+1|aprobado)",
+            re.IGNORECASE,
+        ),
+        "Intento de manipular el scoring de selección desde el contenido del documento/CV.",
+    ),
+    (
+        re.compile(
+            r"(ignore|forget|disregard|override)\s+(all\s+)?(previous|prior|your|the|company)\s+(instructions|rules|prompts?|policies|scoring\s+process)",
             re.IGNORECASE,
         ),
         "Intento de override de instrucciones en inglés.",
@@ -142,9 +149,11 @@ _JAILBREAK_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
 
 _CROSS_TENANT_PATTERNS: List[re.Pattern[str]] = [
     re.compile(r"(soporte de otra empresa|otra empresa cliente|otro cliente distinto)", re.IGNORECASE),
-    re.compile(r"(qu[eé]\s+sla\s+tienen\s+ellos|datos\s+de\s+otra\s+cuenta|sla\s+de\s+otro\s+cliente)", re.IGNORECASE),
+    re.compile(
+        r"(qu[eé]\s+sla\s+tienen\s+ellos|datos\s+de\s+otra\s+cuenta|sla\s+de\s+otro\s+cliente|(?:acceso\s+a\s+la\s+)?cuenta\s+de\s+otro\s+usuario|access\s+to\s+another\s+user)",
+        re.IGNORECASE,
+    ),
 ]
-
 
 def check_input_security(text: str) -> GuardrailCheckResult:
     """Capa de seguridad de entrada: bloquea jailbreaks y cruces entre cuentas cliente."""

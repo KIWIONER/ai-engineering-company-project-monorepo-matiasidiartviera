@@ -60,6 +60,14 @@ class AgentQueryResponse(BaseModel):
     guardrail_triggered: bool = False
     guardrail_failure_type: Optional[str] = None
 
+def _extract_user_security_context(current_user: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "user_role": str(current_user.get("role") or "user"),
+        "user_department": current_user.get("department"),
+        "tenant_id": current_user.get("tenant_id") or current_user.get("branch"),
+    }
+
+
 @router.post(
     "/query",
     response_model=AgentQueryResponse,
@@ -77,6 +85,7 @@ def query_agent(
     Delega enteramente la orquestación al grafo de LangGraph.
     """
     active_thread = payload.thread_id or str(uuid.uuid4())
+    sec_ctx = _extract_user_security_context(current_user)
     logger.info(f"Invocando agente para usuario '{current_user.get('email', 'anónimo')}' (thread: {active_thread})")
     initial_state: AgentState = {
         "question": payload.question,
@@ -85,6 +94,7 @@ def query_agent(
         "answer": "",
         "error": None,
         "execution_trace": [],
+        **sec_ctx,
     }
     config = {"configurable": {"thread_id": active_thread}}
     try:
@@ -111,7 +121,12 @@ def query_agent(
         guardrail_failure_type=final_state.get("guardrail_failure_type"),
     )
 
-async def _stream_agent_turn(session_id: str, question: str, assistant_msg: ChatMessage) -> None:
+async def _stream_agent_turn(
+    session_id: str,
+    question: str,
+    assistant_msg: ChatMessage,
+    sec_ctx: Optional[dict[str, Any]] = None,
+) -> None:
     """
     Ejecuta el grafo `agent_app` en modo streaming y publica cada token en `chat.<session_id>`.
     Permite cancelación instantánea via `asyncio.CancelledError` sin modificar `services/agent/`.
@@ -123,6 +138,7 @@ async def _stream_agent_turn(session_id: str, question: str, assistant_msg: Chat
         "answer": "",
         "error": None,
         "execution_trace": [],
+        **(sec_ctx or {"user_role": "user", "user_department": None, "tenant_id": None}),
     }
     config = {"configurable": {"thread_id": session_id}}
 
@@ -234,6 +250,7 @@ async def support_chat_websocket(
     if current_user is None:
         return
 
+    sec_ctx = _extract_user_security_context(current_user)
     user_id = str(current_user.get("id") or current_user.get("email") or "anonymous")
     queue, snapshot_event = chat_session_manager.subscribe(
         session_id=session_id,
@@ -265,7 +282,7 @@ async def support_chat_websocket(
                     await chat_session_manager.start_generation(
                         session_id=session_id,
                         user_text=text,
-                        runner_factory=lambda msg, q=text: _stream_agent_turn(session_id, q, msg),
+                        runner_factory=lambda msg, q=text: _stream_agent_turn(session_id, q, msg, sec_ctx),
                     )
             elif event_name == "interrupt_requested":
                 new_input = str(data.get("new_input") or "").strip()
@@ -273,7 +290,7 @@ async def support_chat_websocket(
                     await chat_session_manager.start_generation(
                         session_id=session_id,
                         user_text=new_input,
-                        runner_factory=lambda msg, q=new_input: _stream_agent_turn(session_id, q, msg),
+                        runner_factory=lambda msg, q=new_input: _stream_agent_turn(session_id, q, msg, sec_ctx),
                     )
                 else:
                     await chat_session_manager.interrupt_generation(session_id=session_id)

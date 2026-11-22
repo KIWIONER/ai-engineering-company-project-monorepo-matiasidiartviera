@@ -5,6 +5,15 @@
 const TICKETS_STORAGE_KEY = "nexova_support_tickets_v3";
 let activeTicketId = null;
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 const seedTickets = [
   {
     ticket_id: "TK-240601",
@@ -249,11 +258,10 @@ function severityClasses(level, status) {
  */
 function createMessageBubble(text, role) {
   const bubble = document.createElement("article");
-  bubble.className = `max-w-[85%] rounded-xl px-3 py-2 text-sm leading-6 shadow-sm ${
-    role === "user"
-      ? "ml-auto bg-blue-900 text-white"
-      : "mr-auto border border-slate-200 bg-white text-slate-800"
-  }`;
+  bubble.className = `max-w-[85%] rounded-xl px-3 py-2 text-sm leading-6 shadow-sm ${role === "user"
+    ? "ml-auto bg-blue-900 text-white"
+    : "mr-auto border border-slate-200 bg-white text-slate-800"
+    }`;
   bubble.textContent = text;
   return bubble;
 }
@@ -435,21 +443,26 @@ function createTicketCard(ticket) {
   card.dataset.ticketId = ticket.ticket_id;
 
   const badgeClasses = severityClasses(ticket.nivel_gravedad, ticket.estado);
+  const safeId = escapeHtml(ticket.ticket_id);
+  const safeName = escapeHtml(ticket.cliente_info?.nombre);
+  const safeSummary = escapeHtml(ticket.resumen_problema);
+  const safeDate = escapeHtml((ticket.fecha || "").split(" ")[0]);
+  const safeSeverity = escapeHtml(ticket.nivel_gravedad);
 
   card.innerHTML = `
     <article
       class="w-full text-left flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div class="flex items-center gap-4 sm:w-1/4 cursor-pointer" data-ticket-trigger="${ticket.ticket_id}" aria-label="Ver detalle del ticket ${ticket.ticket_id}">
+      <div class="flex items-center gap-4 sm:w-1/4 cursor-pointer" data-ticket-trigger="${safeId}" aria-label="Ver detalle del ticket ${safeId}">
         <div>
-          <p class="text-[10px] font-bold uppercase tracking-wider text-blue-700">${ticket.ticket_id}</p>
-          <h3 class="text-sm font-semibold text-slate-900 leading-tight mt-0.5">${ticket.cliente_info.nombre}</h3>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-blue-700">${safeId}</p>
+          <h3 class="text-sm font-semibold text-slate-900 leading-tight mt-0.5">${safeName}</h3>
         </div>
       </div>
       
       <div class="sm:w-1/4 px-3">
-        <label for="assign-${ticket.ticket_id}" class="sr-only">Asignado a</label>
-        <select id="assign-${ticket.ticket_id}" data-assign-ticket="${ticket.ticket_id}" class="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 focus:border-blue-500 focus:outline-none">
+        <label for="assign-${safeId}" class="sr-only">Asignado a</label>
+        <select id="assign-${safeId}" data-assign-ticket="${safeId}" class="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 focus:border-blue-500 focus:outline-none">
           <option value="Sin asignar" ${ticket.asignado_a === 'Sin asignar' ? 'selected' : ''}>Sin asignar</option>
           <option value="Roberto Diaz" ${ticket.asignado_a === 'Roberto Diaz' ? 'selected' : ''}>Roberto Diaz</option>
           <option value="Laura Mendoza" ${ticket.asignado_a === 'Laura Mendoza' ? 'selected' : ''}>Laura Mendoza</option>
@@ -458,14 +471,14 @@ function createTicketCard(ticket) {
         </select>
       </div>
 
-      <div class="flex-1 text-sm text-slate-600 line-clamp-1 sm:line-clamp-2 sm:px-5 cursor-pointer" data-ticket-trigger="${ticket.ticket_id}">
-        ${ticket.resumen_problema}
+      <div class="flex-1 text-sm text-slate-600 line-clamp-1 sm:line-clamp-2 sm:px-5 cursor-pointer" data-ticket-trigger="${safeId}">
+        ${safeSummary}
       </div>
 
-      <div class="flex items-center justify-between sm:w-[180px] sm:justify-end gap-4 sm:gap-5 cursor-pointer" data-ticket-trigger="${ticket.ticket_id}">
-        <p class="text-xs text-slate-500 whitespace-nowrap">${ticket.fecha.split(" ")[0]}</p>
+      <div class="flex items-center justify-between sm:w-[180px] sm:justify-end gap-4 sm:gap-5 cursor-pointer" data-ticket-trigger="${safeId}">
+        <p class="text-xs text-slate-500 whitespace-nowrap">${safeDate}</p>
         <span class="inline-flex min-w-[75px] justify-center rounded-full px-3 py-1 text-xs font-semibold ${badgeClasses}">
-          ${ticket.nivel_gravedad}
+          ${safeSeverity}
         </span>
       </div>
     </article>
@@ -517,7 +530,7 @@ function bindTicketAssignees() {
       const newAssignee = e.target.value;
       const tickets = readTickets();
       const index = tickets.findIndex((t) => t.ticket_id === ticketId);
-      
+
       if (index > -1) {
         tickets[index].asignado_a = newAssignee;
         writeTickets(tickets);
@@ -581,7 +594,7 @@ function renderTicketDetail(ticket) {
   )}`;
   detailSummary.textContent = ticket.resumen_problema;
 
-  detailTranscript.innerHTML = "";
+  detailTranscript.replaceChildren();
   if (!ticket.historial_transcripcion.length) {
     const empty = document.createElement("p");
     empty.className = "text-sm text-slate-600";
@@ -590,13 +603,12 @@ function renderTicketDetail(ticket) {
   } else {
     ticket.historial_transcripcion.forEach((row) => {
       const item = document.createElement("article");
-      item.className = `rounded-md px-3 py-2 text-sm ${
-        row.role === "agent"
-          ? "ml-auto max-w-[90%] bg-blue-900 text-white"
-          : row.role === "user"
-            ? "mr-auto max-w-[90%] border border-slate-200 bg-white text-slate-800"
-            : "mr-auto max-w-[90%] border border-blue-200 bg-blue-50 text-blue-900"
-      }`;
+      item.className = `rounded-md px-3 py-2 text-sm ${row.role === "agent"
+        ? "ml-auto max-w-[90%] bg-blue-900 text-white"
+        : row.role === "user"
+          ? "mr-auto max-w-[90%] border border-slate-200 bg-white text-slate-800"
+          : "mr-auto max-w-[90%] border border-blue-200 bg-blue-50 text-blue-900"
+        }`;
       item.textContent = row.text;
       detailTranscript.appendChild(item);
     });
@@ -808,7 +820,7 @@ function renderAgentPanel() {
   }
 
   const tickets = readTickets();
-  board.innerHTML = "";
+  board.replaceChildren();
 
   const openTickets = tickets.filter((ticket) => ticket.estado === "Abierto");
 
@@ -819,7 +831,7 @@ function renderAgentPanel() {
     board.appendChild(empty);
   } else {
     const sortOrder = sortSelect ? sortSelect.value : "desc";
-    
+
     openTickets.sort((a, b) => {
       const weightA = getSeverityWeight(a.nivel_gravedad);
       const weightB = getSeverityWeight(b.nivel_gravedad);
