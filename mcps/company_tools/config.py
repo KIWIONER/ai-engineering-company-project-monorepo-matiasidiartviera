@@ -30,6 +30,22 @@ class MCPSettings(BaseModel):
     jwt_secret: str = os.getenv("MCP_JWT_SECRET", "")
     jwt_algorithm: str = "HS256"
 
+    # Orígenes CORS permitidos para el servidor MCP (en producción, lista explícita separada por comas)
+    allowed_origins_raw: str = os.getenv("MCP_ALLOWED_ORIGINS", "")
+
+    @property
+    def allowed_origins(self) -> List[str]:
+        if self.allowed_origins_raw.strip():
+            return [o.strip() for o in self.allowed_origins_raw.split(",") if o.strip()]
+        if self.env == "development":
+            return [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+            ]
+        return []
+
     # Scopes soportados (Principio de Mínimo Privilegio)
     scope_incidents_read: str = "incidents:read"
     scope_incidents_write: str = "incidents:write"

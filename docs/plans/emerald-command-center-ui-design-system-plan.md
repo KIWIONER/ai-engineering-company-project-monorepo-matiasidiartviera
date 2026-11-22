@@ -25,7 +25,7 @@
 * **🎨 UX/UI Lead:**
   - *Aprobado.* El sistema cromático **Forest-Slate (`#04110E` / `#071D18`)** combinado con acentos **Emerald (`#10B981` / `emerald-400`)** y **Champagne Gold (`#FDE68A` / `amber-200`)** dota a Nexova Solutions de una personalidad ejecutiva inconfundible.
   - Se garantiza un ratio de contraste superior a `7:1` en titulares y `4.5:1` en textos secundarios (cumplimiento **WCAG 2.1 AA**), además de estados `:focus-visible` con anillo esmeralda (`outline-emerald-400`) para navegación por teclado.
-* **👨‍💻 Dev Lead:**
+* **👨💻 Dev Lead:**
   - *Aprobado.* Se estandarizan variables CSS semánticas en `globals.css` (`--nx-bg-base`, `--nx-surface-glass`, `--nx-border-emerald`, `--nx-accent-gold`) compatibles con Tailwind v4. Todas las vistas conservarán intactos sus hooks (`useAuth`, llamadas Axios/Fetch, estados de carga y rutas).
 * **🔐 Sec Specialist:**
   - *Aprobado.* El rediseño es estrictamente de capa de presentación. No se alteran los flujos de autenticación JWT, los interceptores de `axios.ts`, las reglas de proxy en `next.config.ts` ni los controles de rol en las rutas protegidas `(dashboard)`.
