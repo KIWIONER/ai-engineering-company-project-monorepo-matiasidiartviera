@@ -27,10 +27,20 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     if not is_valid:
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
     
-    # 3. ¡Son correctos! Creamos el JWT (Token)
+    # 3. ¡Son correctos! Creamos el JWT (Token) con claims de rol, departamento y tenant
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    token_claims = {
+        "sub": user["id"],
+        "role": user.get("role", "user"),
+    }
+    if user.get("department"):
+        token_claims["department"] = user["department"]
+    tenant_val = user.get("tenant_id") or user.get("branch")
+    if tenant_val:
+        token_claims["tenant_id"] = tenant_val
+
     access_token = create_access_token(
-        data={"sub": user['id']}, expires_delta=access_token_expires
+        data=token_claims, expires_delta=access_token_expires
     )
     
     # Se lo devolvemos al frontend

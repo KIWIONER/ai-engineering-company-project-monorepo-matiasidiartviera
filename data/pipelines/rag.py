@@ -55,7 +55,7 @@ de resolución de SLAs), cítalos con exactitud técnica.
 def _is_chunk_authorized(
     payload: dict[str, Any],
     *,
-    user_role: str = "admin",
+    user_role: str = "user",
     user_department: str | None = None,
     user_tenant: str | None = None,
 ) -> bool:
@@ -98,7 +98,7 @@ def retrieve(
     min_score: float = 0.70,
     collection_name: str = DEFAULT_COLLECTION_NAME,
     qdrant_url: str = DEFAULT_QDRANT_URL,
-    user_role: str = "admin",
+    user_role: str = "user",
     user_department: str | None = None,
     user_tenant: str | None = None,
 ) -> list[dict[str, Any]]:

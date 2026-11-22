@@ -266,12 +266,19 @@ def incident_tool_node(state: AgentState) -> Dict[str, Any]:
     question = state["question"]
     trace = list(state.get("execution_trace", [])) + ["incident_tool"]
     ticket_id = extract_ticket_id(question)
+    user_tenant = state.get("tenant_id")
+    user_role = str(state.get("user_role") or "user")
     logger.info(f"incident_tool_node (MCP Client): Consultando ticket '{ticket_id}' en Servidor MCP...")
     try:
         if hasattr(get_incident_ticket, "side_effect") and get_incident_ticket.side_effect:
             tool_data = get_incident_ticket(ticket_id, timeout=5.0)
         else:
-            tool_data = query_incident_via_mcp(ticket_id, timeout=5.0)
+            tool_data = query_incident_via_mcp(
+                ticket_id,
+                timeout=5.0,
+                tenant_id=user_tenant,
+                role=user_role,
+            )
         if isinstance(tool_data, dict):
             for field in ("title", "description"):
                 if isinstance(tool_data.get(field), str):
@@ -340,13 +347,23 @@ def tool_fallback_node(state: AgentState) -> Dict[str, Any]:
 
 def retrieve_node(state: AgentState) -> Dict[str, Any]:
     """
-    Nodo RAG: Ejecuta la recuperación sobre la base de conocimiento vectorial (solo lectura).
+    Nodo RAG: Ejecuta la recuperación sobre la base de conocimiento vectorial (solo lectura)
+    propagando rol, departamento y tenant del usuario (OWASP A01).
     """
     question = state["question"]
     trace = list(state.get("execution_trace", [])) + ["retrieve"]
+    user_role = str(state.get("user_role") or "user")
+    user_department = state.get("user_department")
+    user_tenant = state.get("tenant_id")
 
     try:
-        raw_context = retrieve(question, min_score=0.70)
+        raw_context = retrieve(
+            question,
+            min_score=0.70,
+            user_role=user_role,
+            user_department=user_department,
+            user_tenant=user_tenant,
+        )
         context = isolate_external_chunks(raw_context) if raw_context else []
     except Exception as exc:
         logger.error(f"Error al ejecutar retrieve en base vectorial: {exc}")

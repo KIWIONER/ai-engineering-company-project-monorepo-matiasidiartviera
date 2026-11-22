@@ -62,6 +62,30 @@ def embed(text: str) -> list[float]:
     return embeddings[0].tolist()
 
 
+DOCUMENT_ACCESS_METADATA: dict[str, dict[str, Any]] = {
+    "catalogo_outsourcing_soporte.md": {
+        "department": "soporte",
+        "tenant_id": "valencia",
+        "allowed_roles": ["soporte", "manager", "admin"],
+    },
+    "slas_y_niveles_servicio.md": {
+        "department": "soporte",
+        "tenant_id": "valencia",
+        "allowed_roles": ["soporte", "manager", "admin"],
+    },
+    "politicas_contratacion_seleccion.md": {
+        "department": "rrhh",
+        "tenant_id": "central",
+        "allowed_roles": ["rrhh", "manager", "admin"],
+    },
+    "catalogo_formacion_corporativa.md": {
+        "department": "formacion",
+        "tenant_id": "miami",
+        "allowed_roles": ["formacion", "manager", "admin"],
+    },
+}
+
+
 def chunk_markdown(content: str, filename: str) -> list[dict[str, Any]]:
     """
     Segmenta un documento Markdown por encabezados de nivel 2 (##) para preservar
@@ -97,15 +121,29 @@ def chunk_markdown(content: str, filename: str) -> list[dict[str, Any]]:
         section_match = re.match(r"^##\s+(.+)$", section_text, re.MULTILINE)
         section_name = section_match.group(1).strip() if section_match else "General"
 
-        chunks.append({
+        access_meta = DOCUMENT_ACCESS_METADATA.get(
+            filename,
+            {
+                "department": "general",
+                "tenant_id": None,
+                "allowed_roles": ["user", "soporte", "rrhh", "formacion", "manager", "admin"],
+            },
+        )
+        chunk_payload: dict[str, Any] = {
             "source_document": filename,
             "document_title": doc_title,
             "section": section_name,
             "company": "Nexova Solutions",
             "language": "es",
             "chunk_index": chunk_index,
+            "department": access_meta["department"],
+            "allowed_roles": list(access_meta["allowed_roles"]),
             "text": section_text,
-        })
+        }
+        if access_meta.get("tenant_id") is not None:
+            chunk_payload["tenant_id"] = access_meta["tenant_id"]
+
+        chunks.append(chunk_payload)
         chunk_index += 1
 
     return chunks

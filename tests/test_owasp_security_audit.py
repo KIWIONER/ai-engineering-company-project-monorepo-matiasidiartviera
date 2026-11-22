@@ -203,6 +203,156 @@ def test_sec06_rag_knowledge_query_enforces_two_tenants_and_departments(monkeypa
         app.dependency_overrides.clear()
 
 
+def test_sec07_real_ingestion_tags_chunks_and_filters_valencia_soporte(monkeypatch):
+    """
+    Verifica que la ingesta real (data/process/rag.py) etiqueta todos los chunks de
+    docs/company-knowledge-base/ con department, allowed_roles y tenant_id, y que
+    retrieve() por defecto usa user_role='user' (nunca 'admin') y filtra por tenant/depto.
+    """
+    from pathlib import Path
+    from types import SimpleNamespace
+    from data.process.rag import chunk_markdown
+    from data.pipelines import rag as rag_mod
+
+    corpus_dir = Path(__file__).resolve().parent.parent / "docs" / "company-knowledge-base"
+    real_chunks = []
+    for md_file in sorted(corpus_dir.glob("*.md")):
+        real_chunks.extend(chunk_markdown(md_file.read_text(encoding="utf-8"), md_file.name))
+
+    assert len(real_chunks) > 0
+    for ch in real_chunks:
+        assert "department" in ch and ch["department"]
+        assert "allowed_roles" in ch and len(ch["allowed_roles"]) > 0
+        assert "tenant_id" in ch and ch["tenant_id"]
+
+    fake_points = [SimpleNamespace(score=0.91, payload=ch) for ch in real_chunks]
+
+    class FakeQdrantClient:
+        def __init__(self, url):
+            pass
+
+        def query_points(self, **kwargs):
+            return SimpleNamespace(points=fake_points)
+
+    monkeypatch.setattr(rag_mod, "QdrantClient", FakeQdrantClient)
+    monkeypatch.setattr(rag_mod, "embed", lambda q: [0.1] * 384)
+
+    # 1. Sin user_role explícito -> default es 'user' (NO 'admin'): no accede a chunks restringidos
+    default_results = rag_mod.retrieve("SLAs y contratación", k=20, min_score=0.70)
+    assert len(default_results) == 0
+
+    # 2. Usuario de Valencia / Soporte -> solo recibe sus chunks, nunca RRHH (central) ni Formación (miami)
+    valencia_results = rag_mod.retrieve(
+        "SLAs y contratación",
+        k=20,
+        min_score=0.70,
+        user_role="soporte",
+        user_department="soporte",
+        user_tenant="valencia",
+    )
+    assert len(valencia_results) > 0
+    sources = {r["source_document"] for r in valencia_results}
+    assert sources.issubset({"catalogo_outsourcing_soporte.md", "slas_y_niveles_servicio.md"})
+    assert "politicas_contratacion_seleccion.md" not in sources
+    assert "catalogo_formacion_corporativa.md" not in sources
+
+
+def test_sec08_agent_propagates_real_jwt_claims_to_retrieve(monkeypatch):
+    """
+    Verifica que POST /agent/ask con un token JWT real propaga role, department y tenant_id
+    al estado del agente y hasta retrieve_node -> retrieve().
+    """
+    from services.api.security import create_access_token
+    from services.agent import nodes as agent_nodes
+
+    captured_kwargs = {}
+
+    def fake_retrieve(query, **kwargs):
+        captured_kwargs.update(kwargs)
+        return [
+            {
+                "source_document": "slas_y_niveles_servicio.md",
+                "document_title": "SLAs",
+                "section": "P1",
+                "score": 0.92,
+                "text": "SLA P1 soporte Valencia: 4 horas.",
+            }
+        ]
+
+    monkeypatch.setattr(agent_nodes, "retrieve", fake_retrieve)
+    monkeypatch.setattr(
+        "services.api.routes.auth.get_user_by_id",
+        lambda uid: {
+            "id": uid,
+            "email": "soporte.valencia@nexova.com",
+            "role": "soporte",
+            "department": "soporte",
+            "tenant_id": "valencia",
+        },
+    )
+
+    real_token = create_access_token(
+        data={
+            "sub": "u-val-real",
+            "role": "soporte",
+            "department": "soporte",
+            "tenant_id": "valencia",
+        }
+    )
+
+    client = TestClient(app)
+    res = client.post(
+        "/agent/query",
+        headers={"Authorization": f"Bearer {real_token}"},
+        json={"question": "¿Cuáles son los SLAs de soporte?"},
+    )
+    assert res.status_code == 200
+    assert captured_kwargs.get("user_role") == "soporte"
+    assert captured_kwargs.get("user_department") == "soporte"
+    assert captured_kwargs.get("user_tenant") == "valencia"
+
+
+def test_sec09_agent_mcp_token_carries_tenant_id(monkeypatch):
+    """
+    Verifica que el token MCP generado por el agente incluye tenant_id y role,
+    permitiendo consultar su propio tenant ('valencia') y bloqueando cross-tenant ('miami').
+    """
+    import asyncio
+    from services.agent import tools as agent_tools
+    from mcps.company_tools import tools_incidents as mcp_inc_mod
+
+    fake_incidents = [
+        {"id": "inc-val-1", "title": "Incidencia Valencia", "status": "open", "category": "fallo_operativo", "origin": "branch", "branch": "valencia"},
+        {"id": "inc-mia-1", "title": "Incidencia Miami", "status": "open", "category": "queja", "origin": "customer", "branch": "miami"},
+    ]
+
+    class FakeTable:
+        def all(self):
+            return fake_incidents
+
+        def search(self, cond):
+            return [r for r in fake_incidents if cond(r)]
+
+    class FakeDB:
+        def table(self, name):
+            return FakeTable()
+
+    monkeypatch.setattr(mcp_inc_mod, "get_tinydb", lambda: FakeDB())
+    monkeypatch.setattr(agent_tools, "get_mcp_client", lambda: (_ for _ in ()).throw(RuntimeError("use local mcp")))
+
+    async def _run():
+        # Propio tenant ('valencia') -> PERMITIDO
+        own = await agent_tools._async_query_mcp_incident("inc-val-1", tenant_id="valencia", role="soporte")
+        assert own is not None
+        assert own["branch"] == "valencia"
+
+        # Cross-tenant ('miami' desde token 'valencia') -> BLOQUEADO (None tras 403 en MCP)
+        cross = await agent_tools._async_query_mcp_incident("inc-mia-1", tenant_id="valencia", role="soporte")
+        assert cross is None
+
+    asyncio.run(_run())
+
+
 def test_sec06_mcp_incidents_get_status_enforces_two_tenants(monkeypatch):
     import asyncio
     from types import SimpleNamespace
@@ -322,3 +472,153 @@ def test_sec06_rag_knowledge_query_enforces_two_tenants_and_departments(monkeypa
         assert "Salarios RRHH Miami" not in titles
     finally:
         app.dependency_overrides.clear()
+
+
+def test_sec07_real_ingestion_tags_chunks_and_filters_valencia_soporte(monkeypatch):
+    """
+    Verifica que la ingesta real (data/process/rag.py) etiqueta todos los chunks de
+    docs/company-knowledge-base/ con department, allowed_roles y tenant_id, y que
+    retrieve() por defecto usa user_role='user' (nunca 'admin') y filtra por tenant/depto.
+    """
+    from pathlib import Path
+    from types import SimpleNamespace
+    from data.process.rag import chunk_markdown
+    from data.pipelines import rag as rag_mod
+
+    corpus_dir = Path(__file__).resolve().parent.parent / "docs" / "company-knowledge-base"
+    real_chunks = []
+    for md_file in sorted(corpus_dir.glob("*.md")):
+        real_chunks.extend(chunk_markdown(md_file.read_text(encoding="utf-8"), md_file.name))
+
+    assert len(real_chunks) > 0
+    for ch in real_chunks:
+        assert "department" in ch and ch["department"]
+        assert "allowed_roles" in ch and len(ch["allowed_roles"]) > 0
+        assert "tenant_id" in ch and ch["tenant_id"]
+
+    fake_points = [SimpleNamespace(score=0.91, payload=ch) for ch in real_chunks]
+
+    class FakeQdrantClient:
+        def __init__(self, url):
+            pass
+
+        def query_points(self, **kwargs):
+            return SimpleNamespace(points=fake_points)
+
+    monkeypatch.setattr(rag_mod, "QdrantClient", FakeQdrantClient)
+    monkeypatch.setattr(rag_mod, "embed", lambda q: [0.1] * 384)
+
+    # 1. Sin user_role explícito -> default es 'user' (NO 'admin'): no accede a chunks restringidos
+    default_results = rag_mod.retrieve("SLAs y contratación", k=20, min_score=0.70)
+    assert len(default_results) == 0
+
+    # 2. Usuario de Valencia / Soporte -> solo recibe sus chunks, nunca RRHH (central) ni Formación (miami)
+    valencia_results = rag_mod.retrieve(
+        "SLAs y contratación",
+        k=20,
+        min_score=0.70,
+        user_role="soporte",
+        user_department="soporte",
+        user_tenant="valencia",
+    )
+    assert len(valencia_results) > 0
+    sources = {r["source_document"] for r in valencia_results}
+    assert sources.issubset({"catalogo_outsourcing_soporte.md", "slas_y_niveles_servicio.md"})
+    assert "politicas_contratacion_seleccion.md" not in sources
+    assert "catalogo_formacion_corporativa.md" not in sources
+
+
+def test_sec08_agent_propagates_real_jwt_claims_to_retrieve(monkeypatch):
+    """
+    Verifica que POST /agent/ask con un token JWT real propaga role, department y tenant_id
+    al estado del agente y hasta retrieve_node -> retrieve().
+    """
+    from services.api.security import create_access_token
+    from services.agent import nodes as agent_nodes
+
+    captured_kwargs = {}
+
+    def fake_retrieve(query, **kwargs):
+        captured_kwargs.update(kwargs)
+        return [
+            {
+                "source_document": "slas_y_niveles_servicio.md",
+                "document_title": "SLAs",
+                "section": "P1",
+                "score": 0.92,
+                "text": "SLA P1 soporte Valencia: 4 horas.",
+            }
+        ]
+
+    monkeypatch.setattr(agent_nodes, "retrieve", fake_retrieve)
+    monkeypatch.setattr(
+        "services.api.routes.auth.get_user_by_id",
+        lambda uid: {
+            "id": uid,
+            "email": "soporte.valencia@nexova.com",
+            "role": "soporte",
+            "department": "soporte",
+            "tenant_id": "valencia",
+        },
+    )
+
+    real_token = create_access_token(
+        data={
+            "sub": "u-val-real",
+            "role": "soporte",
+            "department": "soporte",
+            "tenant_id": "valencia",
+        }
+    )
+
+    client = TestClient(app)
+    res = client.post(
+        "/agent/query",
+        headers={"Authorization": f"Bearer {real_token}"},
+        json={"question": "¿Cuáles son los SLAs de soporte?"},
+    )
+    assert res.status_code == 200
+    assert captured_kwargs.get("user_role") == "soporte"
+    assert captured_kwargs.get("user_department") == "soporte"
+    assert captured_kwargs.get("user_tenant") == "valencia"
+
+
+def test_sec09_agent_mcp_token_carries_tenant_id(monkeypatch):
+    """
+    Verifica que el token MCP generado por el agente incluye tenant_id y role,
+    permitiendo consultar su propio tenant ('valencia') y bloqueando cross-tenant ('miami').
+    """
+    import asyncio
+    from services.agent import tools as agent_tools
+    from mcps.company_tools import tools_incidents as mcp_inc_mod
+
+    fake_incidents = [
+        {"id": "inc-val-1", "title": "Incidencia Valencia", "status": "open", "category": "fallo_operativo", "origin": "branch", "branch": "valencia"},
+        {"id": "inc-mia-1", "title": "Incidencia Miami", "status": "open", "category": "queja", "origin": "customer", "branch": "miami"},
+    ]
+
+    class FakeTable:
+        def all(self):
+            return fake_incidents
+
+        def search(self, cond):
+            return [r for r in fake_incidents if cond(r)]
+
+    class FakeDB:
+        def table(self, name):
+            return FakeTable()
+
+    monkeypatch.setattr(mcp_inc_mod, "get_tinydb", lambda: FakeDB())
+    monkeypatch.setattr(agent_tools, "get_mcp_client", lambda: (_ for _ in ()).throw(RuntimeError("use local mcp")))
+
+    async def _run():
+        # Propio tenant ('valencia') -> PERMITIDO
+        own = await agent_tools._async_query_mcp_incident("inc-val-1", tenant_id="valencia", role="soporte")
+        assert own is not None
+        assert own["branch"] == "valencia"
+
+        # Cross-tenant ('miami' desde token 'valencia') -> BLOQUEADO (None tras 403 en MCP)
+        cross = await agent_tools._async_query_mcp_incident("inc-mia-1", tenant_id="valencia", role="soporte")
+        assert cross is None
+
+    asyncio.run(_run())

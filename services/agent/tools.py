@@ -79,7 +79,12 @@ def _format_incident(incident: dict, ticket_identifier: str) -> TicketQueryOutpu
     }
 
 
-async def _async_query_mcp_incident(ticket_identifier: str) -> Optional[TicketQueryOutput]:
+async def _async_query_mcp_incident(
+    ticket_identifier: str,
+    *,
+    tenant_id: Optional[str] = None,
+    role: str = "user",
+) -> Optional[TicketQueryOutput]:
     """Descubre e invoca la tool incidents_get_status del Servidor MCP."""
     # 1. Intentar consumo remoto vía langchain-mcp-adapters (SSE)
     try:
@@ -108,6 +113,8 @@ async def _async_query_mcp_incident(ticket_identifier: str) -> Optional[TicketQu
         token = create_access_token(
             client_id="langgraph-support-agent",
             scopes=[mcp_settings.scope_incidents_read],
+            tenant_id=tenant_id,
+            role=role,
         )
         mcp_auth._context_var.set(verify_access_token(token))
         call_res = await mcp.call_tool("incidents_get_status", arguments={"ticket_id": ticket_identifier})
@@ -124,6 +131,9 @@ async def _async_query_mcp_incident(ticket_identifier: str) -> Optional[TicketQu
 def query_incident_via_mcp(
     ticket_identifier: str,
     timeout: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
+    *,
+    tenant_id: Optional[str] = None,
+    role: str = "user",
 ) -> Optional[TicketQueryOutput]:
     """
     Tool oficial del Agente: Consulta en tiempo real el gestor de incidentes
@@ -135,7 +145,11 @@ def query_incident_via_mcp(
 
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(lambda: asyncio.run(_async_query_mcp_incident(clean_id)))
+            future = executor.submit(
+                lambda: asyncio.run(
+                    _async_query_mcp_incident(clean_id, tenant_id=tenant_id, role=role)
+                )
+            )
             return future.result(timeout=timeout)
     except Exception as exc:
         logger.warning(f"Fallo o timeout en query_incident_via_mcp ('{clean_id}'): {exc}")
