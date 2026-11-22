@@ -43,11 +43,11 @@ export default function DepartmentsPanelPage() {
 
       <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3" aria-label="Paneles departamentales">
         {/* 1. Operaciones de Selección */}
-        <article className="rounded-2xl border border-slate-700/60 bg-[#121721]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-400/40 transition-all">
+        <article className="rounded-2xl border border-stone-500/50 bg-[#ddd9ce]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-500/60 transition-all">
           <header className="mb-4">
             {/* Fila superior: Etiqueta ganadora alineada a la derecha */}
             <div className="flex items-center justify-end mb-3">
-              <div className="inline-flex items-center rounded-lg border border-amber-300/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="inline-flex items-center rounded-lg border border-amber-300/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.08)]">
                 <span className="flex items-center gap-1.5 rounded-md bg-amber-400/15 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 border border-amber-300/25">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_6px_#fde68a]" />
                   LEAD
@@ -58,33 +58,33 @@ export default function DepartmentsPanelPage() {
               </div>
             </div>
             {/* Título en 1 sola línea */}
-            <h2 className="text-lg font-extrabold text-white tracking-tight whitespace-nowrap truncate">
+            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap truncate">
               Operaciones de Selección
             </h2>
           </header>
 
-          <p className="text-xs text-white leading-relaxed mb-5 flex-grow">
+          <p className="text-xs text-slate-700 leading-relaxed mb-5 flex-grow">
             Cribado asistido por IA de CVs y visibilidad en tiempo real para clientes B2B.
           </p>
 
-          <ul className="space-y-3 text-sm border-t border-slate-800/80 pt-4">
+          <ul className="space-y-3 text-sm border-t border-stone-400/70 pt-4">
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">CVs en revisión</span>
-              <strong className="text-lg font-bold text-white">312</strong>
+              <span className="text-slate-700 text-xs">CVs en revisión</span>
+              <strong className="text-lg font-bold text-slate-900">312</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Score promedio IA</span>
-              <strong className="text-lg font-bold text-emerald-400">
-                71<span className="text-xs text-slate-400 font-normal">/100</span>
+              <span className="text-slate-700 text-xs">Score promedio IA</span>
+              <strong className="text-lg font-bold text-emerald-800">
+                71<span className="text-xs text-slate-600 font-normal">/100</span>
               </strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Sin actualizar</span>
-              <strong className="text-lg font-bold text-rose-400">47</strong>
+              <span className="text-slate-700 text-xs">Sin actualizar</span>
+              <strong className="text-lg font-bold text-rose-700">47</strong>
             </li>
           </ul>
 
-          <div className="mt-6 pt-4 border-t border-slate-800/80">
+          <div className="mt-6 pt-4 border-t border-stone-400/70">
             <Link
               href="/scoring"
               className="group relative flex w-full items-center justify-between gap-2 rounded-xl border border-amber-300/30 bg-[#0d121a] p-1.5 pl-3.5 text-xs font-bold text-white shadow-inner transition-all duration-300 hover:border-amber-300/65 hover:bg-[#141c28] hover:shadow-[0_0_24px_rgba(253,230,138,0.14)]"
@@ -106,10 +106,10 @@ export default function DepartmentsPanelPage() {
         </article>
 
         {/* 2. Incidencias */}
-        <article className="rounded-2xl border border-slate-700/60 bg-[#121721]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-400/40 transition-all">
+        <article className="rounded-2xl border border-stone-500/50 bg-[#ddd9ce]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-500/60 transition-all">
           <header className="mb-4">
             <div className="flex items-center justify-end mb-3">
-              <div className="inline-flex items-center rounded-lg border border-emerald-400/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="inline-flex items-center rounded-lg border border-emerald-400/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.08)]">
                 <span className="flex items-center gap-1.5 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-300 border border-emerald-400/25">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
                   AREA
@@ -119,31 +119,31 @@ export default function DepartmentsPanelPage() {
                 </span>
               </div>
             </div>
-            <h2 className="text-lg font-extrabold text-white tracking-tight whitespace-nowrap truncate">
+            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap truncate">
               Incidencias
             </h2>
           </header>
 
-          <p className="text-xs text-white leading-relaxed mb-5 flex-grow">
+          <p className="text-xs text-slate-700 leading-relaxed mb-5 flex-grow">
             Gestión de quejas y reclamaciones conectada en vivo con el agente LangGraph.
           </p>
 
-          <ul className="space-y-3 text-sm border-t border-slate-800/80 pt-4">
+          <ul className="space-y-3 text-sm border-t border-stone-400/70 pt-4">
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Incidencias Totales</span>
-              <strong className="text-lg font-bold text-white">100</strong>
+              <span className="text-slate-700 text-xs">Incidencias Totales</span>
+              <strong className="text-lg font-bold text-slate-900">100</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Abiertas (Pendientes)</span>
-              <strong className="text-lg font-bold text-amber-300">32</strong>
+              <span className="text-slate-700 text-xs">Abiertas (Pendientes)</span>
+              <strong className="text-lg font-bold text-amber-800">32</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Resueltas</span>
-              <strong className="text-lg font-bold text-emerald-400">38</strong>
+              <span className="text-slate-700 text-xs">Resueltas</span>
+              <strong className="text-lg font-bold text-emerald-800">38</strong>
             </li>
           </ul>
 
-          <div className="mt-6 pt-4 border-t border-slate-800/80">
+          <div className="mt-6 pt-4 border-t border-stone-400/70">
             <Link
               href="/incidents"
               className="group relative flex w-full items-center justify-between gap-2 rounded-xl border border-amber-300/30 bg-[#0d121a] p-1.5 pl-3.5 text-xs font-bold text-white shadow-inner transition-all duration-300 hover:border-amber-300/65 hover:bg-[#141c28] hover:shadow-[0_0_24px_rgba(253,230,138,0.14)]"
@@ -165,10 +165,10 @@ export default function DepartmentsPanelPage() {
         </article>
 
         {/* 3. Tickets IT */}
-        <article className="rounded-2xl border border-slate-700/60 bg-[#121721]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-400/40 transition-all">
+        <article className="rounded-2xl border border-stone-500/50 bg-[#ddd9ce]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-500/60 transition-all">
           <header className="mb-4">
             <div className="flex items-center justify-end mb-3">
-              <div className="inline-flex items-center rounded-lg border border-emerald-400/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="inline-flex items-center rounded-lg border border-emerald-400/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.08)]">
                 <span className="flex items-center gap-1.5 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-300 border border-emerald-400/25">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
                   SYS
@@ -178,33 +178,33 @@ export default function DepartmentsPanelPage() {
                 </span>
               </div>
             </div>
-            <h2 className="text-lg font-extrabold text-white tracking-tight whitespace-nowrap truncate">
+            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap truncate">
               Tickets IT
             </h2>
           </header>
 
-          <p className="text-xs text-white leading-relaxed mb-5 flex-grow">
+          <p className="text-xs text-slate-700 leading-relaxed mb-5 flex-grow">
             Helpdesk interno para problemas tecnológicos, sincronización CRM y accesos.
           </p>
 
-          <ul className="space-y-3 text-sm border-t border-slate-800/80 pt-4">
+          <ul className="space-y-3 text-sm border-t border-stone-400/70 pt-4">
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Tickets Activos</span>
-              <strong className="text-lg font-bold text-white">12</strong>
+              <span className="text-slate-700 text-xs">Tickets Activos</span>
+              <strong className="text-lg font-bold text-slate-900">12</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Críticos</span>
-              <strong className="text-lg font-bold text-rose-400">2</strong>
+              <span className="text-slate-700 text-xs">Críticos</span>
+              <strong className="text-lg font-bold text-rose-700">2</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Tiempo medio res.</span>
-              <strong className="text-lg font-bold text-amber-200">
-                4.2<span className="text-xs text-slate-400 font-normal"> hrs</span>
+              <span className="text-slate-700 text-xs">Tiempo medio res.</span>
+              <strong className="text-lg font-bold text-amber-900">
+                4.2<span className="text-xs text-slate-600 font-normal"> hrs</span>
               </strong>
             </li>
           </ul>
 
-          <div className="mt-6 pt-4 border-t border-slate-800/80">
+          <div className="mt-6 pt-4 border-t border-stone-400/70">
             <Link
               href="/admin/tickets"
               className="group relative flex w-full items-center justify-between gap-2 rounded-xl border border-amber-300/30 bg-[#0d121a] p-1.5 pl-3.5 text-xs font-bold text-white shadow-inner transition-all duration-300 hover:border-amber-300/65 hover:bg-[#141c28] hover:shadow-[0_0_24px_rgba(253,230,138,0.14)]"
@@ -226,10 +226,10 @@ export default function DepartmentsPanelPage() {
         </article>
 
         {/* 4. Soporte IA */}
-        <article className="rounded-2xl border border-slate-700/60 bg-[#121721]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-400/40 transition-all">
+        <article className="rounded-2xl border border-stone-500/50 bg-[#ddd9ce]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-500/60 transition-all">
           <header className="mb-4">
             <div className="flex items-center justify-end mb-3">
-              <div className="inline-flex items-center rounded-lg border border-emerald-400/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="inline-flex items-center rounded-lg border border-emerald-400/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.08)]">
                 <span className="flex items-center gap-1.5 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-300 border border-emerald-400/25">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
                   AI
@@ -239,35 +239,35 @@ export default function DepartmentsPanelPage() {
                 </span>
               </div>
             </div>
-            <h2 className="text-lg font-extrabold text-white tracking-tight whitespace-nowrap truncate">
+            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap truncate">
               Soporte IA (Triaje)
             </h2>
           </header>
 
-          <p className="text-xs text-white leading-relaxed mb-5 flex-grow">
+          <p className="text-xs text-slate-700 leading-relaxed mb-5 flex-grow">
             Asistente inteligente con enrutamiento autónomo para atención de primera línea.
           </p>
 
-          <ul className="space-y-3 text-sm border-t border-slate-800/80 pt-4">
+          <ul className="space-y-3 text-sm border-t border-stone-400/70 pt-4">
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Tickets abiertos hoy</span>
-              <strong className="text-lg font-bold text-white">286</strong>
+              <span className="text-slate-700 text-xs">Tickets abiertos hoy</span>
+              <strong className="text-lg font-bold text-slate-900">286</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Agentes Activos</span>
-              <strong className="text-lg font-bold text-emerald-400">12</strong>
+              <span className="text-slate-700 text-xs">Agentes Activos</span>
+              <strong className="text-lg font-bold text-emerald-800">12</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Alerta: Alta carga</span>
-              <strong className="text-lg font-bold text-rose-400">
-                4<span className="text-xs text-slate-400 font-normal"> ops</span>
+              <span className="text-slate-700 text-xs">Alerta: Alta carga</span>
+              <strong className="text-lg font-bold text-rose-700">
+                4<span className="text-xs text-slate-600 font-normal"> ops</span>
               </strong>
             </li>
           </ul>
 
-          <div className="mt-6 pt-4 border-t border-slate-800/80">
-            <Link
-              href="/support"
+          <div className="mt-6 pt-4 border-t border-stone-400/70">
+            <a
+              href={`${process.env.NEXT_PUBLIC_BACKOFFICE_URL || 'http://localhost:3001'}/support-chat`}
               className="group relative flex w-full items-center justify-between gap-2 rounded-xl border border-amber-300/30 bg-[#0d121a] p-1.5 pl-3.5 text-xs font-bold text-white shadow-inner transition-all duration-300 hover:border-amber-300/65 hover:bg-[#141c28] hover:shadow-[0_0_24px_rgba(253,230,138,0.14)]"
             >
               <span className="flex items-center gap-2 min-w-0">
@@ -282,15 +282,15 @@ export default function DepartmentsPanelPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
                 </svg>
               </span>
-            </Link>
+            </a>
           </div>
         </article>
 
         {/* 5. Proveedores */}
-        <article className="rounded-2xl border border-slate-700/60 bg-[#121721]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-400/40 transition-all">
+        <article className="rounded-2xl border border-stone-500/50 bg-[#ddd9ce]/90 backdrop-blur-xl p-6 shadow-xl flex flex-col hover:border-emerald-500/60 transition-all">
           <header className="mb-4">
             <div className="flex items-center justify-end mb-3">
-              <div className="inline-flex items-center rounded-lg border border-amber-300/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="inline-flex items-center rounded-lg border border-amber-300/35 bg-[#0b1017] p-0.5 shadow-[0_4px_12px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.08)]">
                 <span className="flex items-center gap-1.5 rounded-md bg-amber-400/15 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 border border-amber-300/25">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_6px_#fde68a]" />
                   B2B
@@ -300,33 +300,33 @@ export default function DepartmentsPanelPage() {
                 </span>
               </div>
             </div>
-            <h2 className="text-lg font-extrabold text-white tracking-tight whitespace-nowrap truncate">
+            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight whitespace-nowrap truncate">
               Proveedores
             </h2>
           </header>
 
-          <p className="text-xs text-white leading-relaxed mb-5 flex-grow">
+          <p className="text-xs text-slate-700 leading-relaxed mb-5 flex-grow">
             Gestión de contratación, tarifas por hora y estado de proveedores externos.
           </p>
 
-          <ul className="space-y-3 text-sm border-t border-slate-800/80 pt-4">
+          <ul className="space-y-3 text-sm border-t border-stone-400/70 pt-4">
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Proveedores Activos</span>
-              <strong className="text-lg font-bold text-white">45</strong>
+              <span className="text-slate-700 text-xs">Proveedores Activos</span>
+              <strong className="text-lg font-bold text-slate-900">45</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Facturas Pendientes</span>
-              <strong className="text-lg font-bold text-amber-300">8</strong>
+              <span className="text-slate-700 text-xs">Facturas Pendientes</span>
+              <strong className="text-lg font-bold text-amber-800">8</strong>
             </li>
             <li className="flex justify-between items-center">
-              <span className="text-white/90 text-xs">Coste mensual</span>
-              <strong className="text-lg font-bold text-emerald-400">
-                14<span className="text-xs text-slate-400 font-normal"> k</span>
+              <span className="text-slate-700 text-xs">Coste mensual</span>
+              <strong className="text-lg font-bold text-emerald-800">
+                14<span className="text-xs text-slate-600 font-normal"> k</span>
               </strong>
             </li>
           </ul>
 
-          <div className="mt-6 pt-4 border-t border-slate-800/80">
+          <div className="mt-6 pt-4 border-t border-stone-400/70">
             <Link
               href="/suppliers"
               className="group relative flex w-full items-center justify-between gap-2 rounded-xl border border-amber-300/30 bg-[#0d121a] p-1.5 pl-3.5 text-xs font-bold text-white shadow-inner transition-all duration-300 hover:border-amber-300/65 hover:bg-[#141c28] hover:shadow-[0_0_24px_rgba(253,230,138,0.14)]"

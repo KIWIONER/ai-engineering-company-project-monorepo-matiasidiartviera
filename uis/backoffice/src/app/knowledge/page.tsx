@@ -101,6 +101,12 @@ export default function KnowledgePage() {
           </div>
 
           <div className={styles.headerActions}>
+            <a
+              href={process.env.NEXT_PUBLIC_WEBSITE_URL || "http://localhost:3000"}
+              className={styles.navLink}
+            >
+              Website Oficial ↗
+            </a>
             <Link href="/rfps" className={styles.navLink}>
               <FileText size={16} /> Portal RFPs
             </Link>

@@ -286,6 +286,45 @@ async def support_chat_websocket(
         chat_session_manager.unsubscribe(session_id=session_id, queue=queue)
 
 
+def _extract_user_id(current_user: dict[str, Any]) -> str:
+    return str(current_user.get("id") or current_user.get("email") or "anonymous")
+
+
+@router.get(
+    "/sessions",
+    status_code=status.HTTP_200_OK,
+    summary="Listar sesiones de chat de soporte del usuario",
+    description="Devuelve las sesiones persistidas del usuario autenticado ordenadas de más reciente a más antigua.",
+)
+def list_support_sessions(
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Lista las sesiones de chat del usuario autenticado (aislamiento anti-IDOR)."""
+    user_id = _extract_user_id(current_user)
+    return {"sessions": chat_session_manager.list_sessions(user_id=user_id)}
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Eliminar una sesión de chat de soporte",
+    description="Elimina la sesión y su historial de mensajes si pertenece al usuario autenticado.",
+)
+def delete_support_session(
+    session_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, str]:
+    """Elimina una sesión propia del usuario autenticado."""
+    user_id = _extract_user_id(current_user)
+    deleted = chat_session_manager.delete_session(session_id=session_id, user_id=user_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sesión no encontrada o sin permisos para eliminarla.",
+        )
+    return {"status": "deleted", "session_id": session_id}
+
+
 @router.get(
     "/guardrails/summary",
     status_code=status.HTTP_200_OK,

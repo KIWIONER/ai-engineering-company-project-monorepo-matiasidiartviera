@@ -58,14 +58,14 @@ export default function StatusStageControls({
   };
 
   return (
-    <div className="bg-[#121721]/80 backdrop-blur-xl rounded-2xl border border-emerald-500/20 p-6 shadow-xl mb-6">
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-emerald-500/15">
-        <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+    <div className="bg-[#ddd9ce]/90 backdrop-blur-xl rounded-2xl border border-stone-500/50 p-6 shadow-xl mb-6">
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-stone-400/70">
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
           Control de Estado y Etapa (PATCH)
         </h3>
         {updating && (
-          <div className="flex items-center text-xs font-semibold text-emerald-300">
-            <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mr-1.5" />
+          <div className="flex items-center text-xs font-semibold text-emerald-800">
+            <div className="w-3.5 h-3.5 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin mr-1.5" />
             Actualizando...
           </div>
         )}
@@ -75,21 +75,21 @@ export default function StatusStageControls({
         <div
           className={`p-3 rounded-xl text-xs font-semibold mb-4 flex items-center justify-between ${
             feedback.type === 'success'
-              ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-400/30'
-              : 'bg-rose-500/15 text-rose-200 border border-rose-400/30'
+              ? 'bg-emerald-700/15 text-emerald-900 border border-emerald-700/35'
+              : 'bg-rose-700/15 text-rose-900 border border-rose-700/35'
           }`}
         >
           <span>{feedback.message}</span>
-          <button onClick={() => setFeedback(null)} className="text-emerald-200/60 hover:text-white">
+          <button onClick={() => setFeedback(null)} className="text-slate-700 hover:text-slate-950">
             &times;
           </button>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5">
         {/* Cambiar Estado */}
-        <div>
-          <label className="block text-xs font-semibold text-emerald-100/80 mb-2 flex items-center justify-between">
+        <div className="min-w-0">
+          <label className="text-xs font-semibold text-slate-800 mb-2 flex flex-wrap items-center justify-between gap-2">
             <span>Estado Actual:</span>
             <Badge label={status} variant="status" size="sm" />
           </label>
@@ -97,7 +97,7 @@ export default function StatusStageControls({
             disabled={updating}
             value={status}
             onChange={(e) => handleStatusChange(e.target.value as CandidateStatus)}
-            className="w-full bg-[#181f2c]/90 border border-emerald-500/25 text-white text-xs rounded-xl p-3 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 disabled:opacity-50"
+            className="w-full bg-[#181f2c]/95 border border-stone-600/50 text-white text-xs rounded-xl p-3 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 disabled:opacity-50"
           >
             <option value="PENDING">PENDIENTE (PENDING)</option>
             <option value="IN_REVIEW">EN REVISIÓN (IN_REVIEW)</option>
@@ -107,8 +107,8 @@ export default function StatusStageControls({
         </div>
 
         {/* Cambiar Etapa */}
-        <div>
-          <label className="block text-xs font-semibold text-emerald-100/80 mb-2 flex items-center justify-between">
+        <div className="min-w-0">
+          <label className="text-xs font-semibold text-slate-800 mb-2 flex flex-wrap items-center justify-between gap-2">
             <span>Etapa Actual:</span>
             <Badge label={stage} variant="stage" size="sm" />
           </label>
@@ -116,7 +116,7 @@ export default function StatusStageControls({
             disabled={updating}
             value={stage}
             onChange={(e) => handleStageChange(e.target.value as CandidateStage)}
-            className="w-full bg-[#181f2c]/90 border border-emerald-500/25 text-white text-xs rounded-xl p-3 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 disabled:opacity-50"
+            className="w-full bg-[#181f2c]/95 border border-stone-600/50 text-white text-xs rounded-xl p-3 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 disabled:opacity-50"
           >
             <option value="SCREENING">CRIBA (SCREENING)</option>
             <option value="INTERVIEW">ENTREVISTA (INTERVIEW)</option>
