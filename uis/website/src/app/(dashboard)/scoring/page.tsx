@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useCallback, Suspense } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Candidate } from '@/types/candidate';
@@ -10,11 +10,15 @@ import CandidateFilters from '@/components/candidates/CandidateFilters';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 
+const PAGE_SIZE = 20;
+
 function CandidatesContent() {
   const searchParams = useSearchParams();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const listTopRef = useRef<HTMLDivElement | null>(null);
 
   const query = searchParams.get('query') || '';
   const status = searchParams.get('status') || 'ALL';
@@ -39,6 +43,11 @@ function CandidatesContent() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadCandidates();
   }, [loadCandidates]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCurrentPage(1);
+  }, [query, status, stage, sort]);
 
   const filteredCandidates = useMemo(() => {
     const filtered = candidates.filter((candidate) => {
@@ -128,33 +137,94 @@ function CandidatesContent() {
       )}
 
       {/* Estado: Éxito con datos */}
-      {!loading && !error && (
-        <>
-          <div className="flex items-center justify-between mb-4 px-1">
-            <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider">
-              Mostrando {filteredCandidates.length} de {candidates.length} candidaturas · Orden:{' '}
-              <span className="text-amber-200">
-                {sort === 'score_asc' ? 'Menor a Mayor Score IA ↑' : 'Mayor a Menor Score IA ↓'}
-              </span>
-            </span>
-          </div>
+      {!loading && !error && (() => {
+        const totalItems = filteredCandidates.length;
+        const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        const safePage = Math.min(currentPage, totalPages);
+        const startIdx = (safePage - 1) * PAGE_SIZE;
+        const paginatedCandidates = filteredCandidates.slice(startIdx, startIdx + PAGE_SIZE);
+        const rangeStart = totalItems === 0 ? 0 : startIdx + 1;
+        const rangeEnd = Math.min(startIdx + PAGE_SIZE, totalItems);
 
-          {filteredCandidates.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredCandidates.map((candidate) => (
-                <CandidateCard key={candidate.id} candidate={candidate} />
-              ))}
+        const goToPage = (page: number) => {
+          setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+          listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        return (
+          <>
+            <div ref={listTopRef} className="scroll-mt-4 flex flex-wrap items-center justify-between gap-2 mb-4 px-1">
+              <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider">
+                Mostrando {rangeStart}–{rangeEnd} de {totalItems} candidaturas · Página {safePage} de {totalPages} · Orden:{' '}
+                <span className="text-amber-200">
+                  {sort === 'score_asc' ? 'Menor a Mayor Score IA ↑' : 'Mayor a Menor Score IA ↓'}
+                </span>
+              </span>
             </div>
-          ) : (
-            <div className="bg-[#121721]/90 rounded-2xl border border-slate-700/60 p-12 text-center my-6">
-              <h3 className="text-base font-bold text-white">No se encontraron candidaturas</h3>
-              <p className="text-xs text-white/80 mt-1 max-w-sm mx-auto">
-                No hay candidaturas que coincidan con los filtros seleccionados o el término de búsqueda.
-              </p>
-            </div>
-          )}
-        </>
-      )}
+
+            {paginatedCandidates.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {paginatedCandidates.map((candidate) => (
+                    <CandidateCard key={candidate.id} candidate={candidate} />
+                  ))}
+                </div>
+
+                {totalPages > 1 && (
+                  <nav
+                    aria-label="Paginación de candidaturas"
+                    className="mt-8 flex flex-wrap items-center justify-center gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => goToPage(safePage - 1)}
+                      disabled={safePage === 1}
+                      className="rounded-xl border border-emerald-500/25 bg-[#121721]/90 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      &larr; Anterior
+                    </button>
+
+                    {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
+                      const isCurrent = pageNum === safePage;
+                      return (
+                        <button
+                          key={pageNum}
+                          type="button"
+                          onClick={() => goToPage(pageNum)}
+                          aria-current={isCurrent ? 'page' : undefined}
+                          className={`min-w-[36px] rounded-xl px-3 py-2 text-xs font-mono font-bold transition ${
+                            isCurrent
+                              ? 'border border-emerald-400 bg-emerald-400 text-[#0a0d12] shadow-[0_0_16px_rgba(16,185,129,0.3)]'
+                              : 'border border-slate-700/70 bg-[#121721]/90 text-slate-300 hover:border-emerald-400/50 hover:text-emerald-300'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      type="button"
+                      onClick={() => goToPage(safePage + 1)}
+                      disabled={safePage === totalPages}
+                      className="rounded-xl border border-emerald-500/25 bg-[#121721]/90 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Siguiente &rarr;
+                    </button>
+                  </nav>
+                )}
+              </>
+            ) : (
+              <div className="bg-[#121721]/90 rounded-2xl border border-slate-700/60 p-12 text-center my-6">
+                <h3 className="text-base font-bold text-white">No se encontraron candidaturas</h3>
+                <p className="text-xs text-white/80 mt-1 max-w-sm mx-auto">
+                  No hay candidaturas que coincidan con los filtros seleccionados o el término de búsqueda.
+                </p>
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }

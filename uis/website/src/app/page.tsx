@@ -1,13 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 
 export default function HomePage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeAgentRoute, setActiveAgentRoute] = useState<'tool' | 'rag'>('tool');
+  const [mounted, setMounted] = useState(false);
   const { isAuthenticated } = useAuth();
+  const showAuthenticated = mounted && isAuthenticated;
+  const BACKOFFICE_URL =
+    process.env.NEXT_PUBLIC_BACKOFFICE_URL || "http://localhost:3001/knowledge";
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className="min-h-screen nx-spatial-bg text-slate-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200 relative overflow-x-hidden">
@@ -29,13 +37,13 @@ export default function HomePage() {
       <header className="sticky top-4 z-50 mx-auto max-w-6xl px-4 sm:px-6">
         <nav
           aria-label="Navegación principal"
-          className="flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-[#121721]/80 px-5 py-3.5 shadow-2xl shadow-black/60 backdrop-blur-xl"
+          className="flex items-center justify-between gap-4 rounded-2xl border border-emerald-500/20 bg-[#121721]/80 px-4 sm:px-5 py-3.5 shadow-2xl shadow-black/60 backdrop-blur-xl"
         >
           <Link
             href="/"
-            className="group flex items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+            className="group flex shrink-0 items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 via-emerald-500 to-teal-700 text-[#0a0d12] font-black text-lg shadow-lg shadow-emerald-500/25 transition-transform group-hover:scale-105">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 via-emerald-500 to-teal-700 text-[#0a0d12] font-black text-lg shadow-lg shadow-emerald-500/25 transition-transform group-hover:scale-105">
               N
             </div>
             <div className="flex flex-col">
@@ -49,54 +57,60 @@ export default function HomePage() {
           </Link>
 
           {/* Enlaces Desktop */}
-          <ul className="hidden items-center gap-8 text-sm font-medium text-slate-300 md:flex">
+          <ul className="hidden items-center gap-5 xl:gap-8 text-sm font-medium text-slate-300 xl:flex">
             <li>
-              <a href="#command-center" className="transition hover:text-emerald-400">
+              <a href="#command-center" className="whitespace-nowrap transition hover:text-emerald-400">
                 Command Center
               </a>
             </li>
             <li>
-              <a href="#servicios" className="transition hover:text-emerald-400">
+              <a href="#servicios" className="whitespace-nowrap transition hover:text-emerald-400">
                 Líneas de Negocio
               </a>
             </li>
             <li>
-              <a href="#impacto" className="transition hover:text-emerald-400">
+              <a href="#impacto" className="whitespace-nowrap transition hover:text-emerald-400">
                 Impacto & SLA
               </a>
             </li>
             <li>
-              <a href="#arquitectura" className="transition hover:text-emerald-400">
+              <a href="#arquitectura" className="whitespace-nowrap transition hover:text-emerald-400">
                 Arquitectura IA
               </a>
             </li>
           </ul>
 
           {/* CTA Derecha */}
-          <div className="hidden md:flex items-center gap-3">
-            {isAuthenticated ? (
+          <div className="hidden xl:flex shrink-0 items-center gap-2.5">
+            <a
+              href={BACKOFFICE_URL}
+              className="inline-flex shrink-0 whitespace-nowrap items-center gap-2 rounded-full border border-slate-600/60 bg-slate-800/60 px-4 py-2 text-xs font-semibold tracking-wide text-slate-200 transition hover:border-emerald-400/50 hover:text-emerald-300"
+            >
+              Backoffice IA
+            </a>
+            {showAuthenticated ? (
               <Link
                 href="/admin/panel"
-                className="inline-flex items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/15 px-5 py-2 text-xs font-semibold tracking-wide text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400 hover:text-[#0a0d12]"
+                className="inline-flex shrink-0 whitespace-nowrap items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/15 px-4 py-2 text-xs font-semibold tracking-wide text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400 hover:text-[#0a0d12]"
               >
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                Ir al Dashboard →
+                Ir al Dashboard
               </Link>
             ) : (
               <Link
                 href="/login"
-                className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-5 py-2 text-xs font-semibold tracking-wide text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.2)] transition hover:border-emerald-400 hover:bg-emerald-400 hover:text-[#0a0d12]"
+                className="inline-flex shrink-0 whitespace-nowrap items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold tracking-wide text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.2)] transition hover:border-emerald-400 hover:bg-emerald-400 hover:text-[#0a0d12]"
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Acceso Corporativo →
+                Acceso Corporativo
               </Link>
             )}
           </div>
 
-          {/* Botón Móvil */}
+          {/* Botón Móvil / Tablet */}
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-lg border border-emerald-500/30 p-2 text-emerald-300 transition hover:bg-emerald-500/10 md:hidden"
+            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 p-2 text-emerald-300 transition hover:bg-emerald-500/10 xl:hidden"
             aria-expanded={isMobileMenuOpen}
             aria-label="Abrir menú principal"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -107,10 +121,10 @@ export default function HomePage() {
           </button>
         </nav>
 
-        {/* Menú Móvil */}
+        {/* Menú Móvil / Tablet */}
         {isMobileMenuOpen && (
           <div
-            className="mt-2 rounded-2xl border border-emerald-500/20 bg-[#121721]/95 p-4 shadow-2xl backdrop-blur-xl md:hidden"
+            className="mt-2 rounded-2xl border border-emerald-500/20 bg-[#121721]/95 p-4 shadow-2xl backdrop-blur-xl xl:hidden"
             aria-label="Menú principal móvil"
           >
             <ul className="space-y-2 text-sm text-slate-200">
@@ -141,13 +155,29 @@ export default function HomePage() {
                   Impacto & SLA
                 </a>
               </li>
-              <li className="pt-2 border-t border-emerald-500/20">
+              <li>
+                <a
+                  href="#arquitectura"
+                  className="block rounded-lg px-3 py-2 hover:bg-emerald-500/10 hover:text-emerald-300"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Arquitectura IA
+                </a>
+              </li>
+              <li className="pt-2 border-t border-emerald-500/20 flex flex-col gap-2">
+                <a
+                  href={BACKOFFICE_URL}
+                  className="block w-full rounded-xl border border-slate-600/60 bg-slate-800/60 py-2.5 text-center font-semibold text-slate-200 hover:border-emerald-400/50 hover:text-emerald-300"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Backoffice IA
+                </a>
                 <Link
-                  href={isAuthenticated ? '/admin/panel' : '/login'}
+                  href={showAuthenticated ? '/admin/panel' : '/login'}
                   className="block w-full rounded-xl bg-emerald-400 py-2.5 text-center font-semibold text-[#0a0d12]"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  {isAuthenticated ? 'Ir al Dashboard' : 'Acceso Corporativo'}
+                  {showAuthenticated ? 'Ir al Dashboard' : 'Acceso Corporativo'}
                 </Link>
               </li>
             </ul>
@@ -191,7 +221,7 @@ export default function HomePage() {
             {/* Botones de Acción */}
             <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
               <Link
-                href={isAuthenticated ? '/admin/panel' : '/login'}
+                href={showAuthenticated ? '/admin/panel' : '/login'}
                 className="inline-flex items-center justify-center rounded-full bg-emerald-400 px-7 py-3.5 text-sm font-bold text-[#0a0d12] shadow-[0_0_35px_rgba(16,185,129,0.45)] transition hover:bg-emerald-300 hover:scale-[1.02]"
               >
                 Empezar Diagnóstico Digital
@@ -289,22 +319,20 @@ export default function HomePage() {
                       <button
                         type="button"
                         onClick={() => setActiveAgentRoute('tool')}
-                        className={`rounded-md px-2.5 py-1 font-medium transition ${
-                          activeAgentRoute === 'tool'
+                        className={`rounded-md px-2.5 py-1 font-medium transition ${activeAgentRoute === 'tool'
                             ? 'bg-emerald-400 text-[#0a0d12] font-bold'
                             : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                          }`}
                       >
                         Ruta Tool (30ms)
                       </button>
                       <button
                         type="button"
                         onClick={() => setActiveAgentRoute('rag')}
-                        className={`rounded-md px-2.5 py-1 font-medium transition ${
-                          activeAgentRoute === 'rag'
+                        className={`rounded-md px-2.5 py-1 font-medium transition ${activeAgentRoute === 'rag'
                             ? 'bg-emerald-400 text-[#0a0d12] font-bold'
                             : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                          }`}
                       >
                         Ruta RAG (Qdrant)
                       </button>
@@ -519,7 +547,7 @@ export default function HomePage() {
               </p>
               <div className="mt-6 pt-4 border-t border-emerald-500/15 flex items-center justify-between text-xs text-emerald-300 font-medium">
                 <span>Explorar módulo de Selección</span>
-                <Link href={isAuthenticated ? '/scoring' : '/login'} className="hover:underline">
+                <Link href={showAuthenticated ? '/scoring' : '/login'} className="hover:underline">
                   Abrir →
                 </Link>
               </div>
@@ -541,7 +569,7 @@ export default function HomePage() {
               </p>
               <div className="mt-6 pt-4 border-t border-emerald-500/15 flex items-center justify-between text-xs text-emerald-300 font-medium">
                 <span>Gestionar tickets e incidencias</span>
-                <Link href={isAuthenticated ? '/incidents' : '/login'} className="hover:underline">
+                <Link href={showAuthenticated ? '/incidents' : '/login'} className="hover:underline">
                   Abrir →
                 </Link>
               </div>
@@ -563,7 +591,7 @@ export default function HomePage() {
               </p>
               <div className="mt-6 pt-4 border-t border-emerald-500/15 flex items-center justify-between text-xs text-emerald-300 font-medium">
                 <span>Directorio de proveedores</span>
-                <Link href={isAuthenticated ? '/suppliers' : '/login'} className="hover:underline">
+                <Link href={showAuthenticated ? '/suppliers' : '/login'} className="hover:underline">
                   Abrir →
                 </Link>
               </div>
@@ -588,10 +616,10 @@ export default function HomePage() {
               </div>
               <div className="md:col-span-4 flex flex-col sm:flex-row md:flex-col gap-3 justify-end">
                 <Link
-                  href={isAuthenticated ? '/admin/panel' : '/login'}
+                  href={showAuthenticated ? '/admin/panel' : '/login'}
                   className="inline-flex items-center justify-center rounded-xl bg-emerald-400 px-6 py-3.5 text-sm font-bold text-[#0a0d12] shadow-lg shadow-emerald-500/25 transition hover:bg-emerald-300"
                 >
-                  {isAuthenticated ? 'Acceder al Panel Ejecutivo' : 'Iniciar Sesión en Plataforma'}
+                  {showAuthenticated ? 'Acceder al Panel Ejecutivo' : 'Iniciar Sesión en Plataforma'}
                 </Link>
                 <Link
                   href="/register"

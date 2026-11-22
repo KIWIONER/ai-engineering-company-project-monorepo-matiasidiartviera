@@ -259,6 +259,65 @@ class ChatSessionManager:
         channel = self._channels.get(session_id)
         return channel.session if channel else None
 
+    def list_sessions(self, user_id: str) -> List[Dict[str, Any]]:
+        """Lista las sesiones persistidas de un usuario con conteo y vista previa."""
+        self._ensure_tables()
+        with Session(self._engine) as db:
+            rows = db.exec(
+                select(ChatSessionRecord)
+                .where(ChatSessionRecord.user_id == user_id)
+                .order_by(ChatSessionRecord.created_at.desc())
+            ).all()
+
+            result: List[Dict[str, Any]] = []
+            for row in rows:
+                msg_rows = db.exec(
+                    select(ChatMessageRecord)
+                    .where(ChatMessageRecord.session_id == row.session_id)
+                    .order_by(ChatMessageRecord.id)
+                ).all()
+                first_user_msg = next(
+                    (m.content for m in msg_rows if m.role == "user" and m.content.strip()),
+                    "",
+                )
+                preview = (
+                    first_user_msg[:72] + "..."
+                    if len(first_user_msg) > 72
+                    else first_user_msg
+                )
+                result.append(
+                    {
+                        "session_id": row.session_id,
+                        "agent_id": row.agent_id,
+                        "status": row.status,
+                        "created_at": row.created_at,
+                        "message_count": len(msg_rows),
+                        "preview": preview or "Sesión sin mensajes",
+                    }
+                )
+            return result
+
+    def delete_session(self, session_id: str, user_id: str) -> bool:
+        """Elimina una sesión y sus mensajes si pertenece al usuario autenticado."""
+        self._ensure_tables()
+        with Session(self._engine) as db:
+            sess = db.get(ChatSessionRecord, session_id)
+            if sess is None or sess.user_id != user_id:
+                return False
+
+            msg_rows = db.exec(
+                select(ChatMessageRecord).where(ChatMessageRecord.session_id == session_id)
+            ).all()
+            for msg_row in msg_rows:
+                db.delete(msg_row)
+            db.delete(sess)
+            db.commit()
+
+        channel = self._channels.pop(session_id, None)
+        if channel is not None and channel.active_task and not channel.active_task.done():
+            channel.active_task.cancel()
+        return True
+
     def build_snapshot_event(self, session_id: str) -> Dict[str, Any]:
         """Construye el evento `session_snapshot` para rehidratar el hilo al conectar/reconectar."""
         channel = self._channels[session_id]

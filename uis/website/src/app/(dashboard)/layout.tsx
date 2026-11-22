@@ -9,6 +9,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
+  const backofficeBase =
+    process.env.NEXT_PUBLIC_BACKOFFICE_URL || "http://localhost:3001";
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -80,16 +82,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </svg>
       ),
     },
-    {
-      name: 'Soporte IA',
-      href: '/support',
-      roles: ['admin', 'manager', 'user'],
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-        </svg>
-      ),
-    },
   ];
 
   const userRole = typeof user?.role === 'string' ? user.role : '';
@@ -143,6 +135,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Link>
             );
           })}
+
+          <div className="pt-4 mt-4 border-t border-slate-800/80">
+            <p className="px-4 text-[10px] font-semibold text-emerald-400/80 uppercase tracking-[0.18em] mb-2">
+              Backoffice IA
+            </p>
+            {[
+              { name: 'Base Conocimiento (RAG)', href: `${backofficeBase}/knowledge` },
+              { name: 'Reporting Ejecutivo', href: `${backofficeBase}/reporting` },
+              { name: 'Portal RFPs', href: `${backofficeBase}/rfps` },
+              { name: 'Chat Soporte IA', href: `${backofficeBase}/support-chat` },
+              { name: 'Inventario', href: `${backofficeBase}/inventory/products` },
+            ].map((ext) => (
+              <a
+                key={ext.name}
+                href={ext.href}
+                className="flex items-center justify-between px-4 py-2 text-xs text-slate-300 hover:text-emerald-300 hover:bg-slate-800/60 rounded-xl transition-colors"
+              >
+                <span>{ext.name}</span>
+                <span className="text-[10px] text-slate-500">↗</span>
+              </a>
+            ))}
+          </div>
         </nav>
 
         <div className="p-4 border-t border-slate-800/80 bg-[#090c11]/80">
@@ -213,7 +227,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     incidents: 'Incidencias',
                     tickets: 'Tickets IT',
                     suppliers: 'Proveedores',
-                    support: 'Soporte IA',
                     account: 'Cuenta',
                     profile: 'Mi Perfil',
                   };

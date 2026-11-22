@@ -18,12 +18,14 @@ export default function NewIncidentPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
     setSuccessMsg('');
+    setCreatedId(null);
     try {
       const res = await fetch('/api/incidents', {
         method: 'POST',
@@ -46,6 +48,7 @@ export default function NewIncidentPage() {
       }
 
       setSuccessMsg('Incidencia registrada correctamente.');
+      setCreatedId(data?.id || null);
       setFormData({
         title: '',
         description: '',
@@ -82,8 +85,25 @@ export default function NewIncidentPage() {
           </div>
         )}
         {successMsg && (
-          <div className="bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 px-4 py-3 rounded-xl text-xs mb-4">
-            {successMsg}
+          <div className="bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 px-4 py-3 rounded-xl text-xs mb-4 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold">{successMsg}</span>
+              <button
+                type="button"
+                onClick={() => router.push('/incidents')}
+                className="font-bold underline hover:text-white transition"
+              >
+                Ir al listado &rarr;
+              </button>
+            </div>
+            {createdId && (
+              <div className="flex items-center gap-2 text-[11px] text-emerald-200/90">
+                <span>ID asignado:</span>
+                <code className="rounded bg-[#0a0d12]/80 border border-emerald-400/30 px-2 py-0.5 font-mono text-emerald-300 select-all">
+                  {createdId}
+                </code>
+              </div>
+            )}
           </div>
         )}
 

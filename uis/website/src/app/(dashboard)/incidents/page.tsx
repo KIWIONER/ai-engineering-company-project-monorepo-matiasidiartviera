@@ -1,9 +1,11 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/axios';
 import axios from 'axios';
+
+const PAGE_SIZE = 10;
 
 export default function IncidentsPage() {
   const router = useRouter();
@@ -11,6 +13,9 @@ export default function IncidentsPage() {
 
   const [incidents, setIncidents] = useState<Record<string, unknown>[]>([]);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const listTopRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -38,7 +43,12 @@ export default function IncidentsPage() {
         api.get('/api/incidents/summary'),
       ]);
 
-      setIncidents(incRes.data);
+      const sortedIncidents = [...(incRes.data || [])].sort((a, b) => {
+        const da = new Date((a.created_at as string) || 0).getTime();
+        const db = new Date((b.created_at as string) || 0).getTime();
+        return db - da;
+      });
+      setIncidents(sortedIncidents);
       setSummary(sumRes.data);
     } catch {
       setErrorMsg('Ocurrió un error de conexión al cargar la lista. Puedes reintentar.');
@@ -74,6 +84,7 @@ export default function IncidentsPage() {
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
+    setCurrentPage(1);
   };
 
   return (
@@ -206,72 +217,185 @@ export default function IncidentsPage() {
             Intenta ajustar los filtros o registra una nueva incidencia.
           </p>
         </div>
-      ) : (
-        <div className="overflow-x-auto bg-[#121721]/80 rounded-2xl shadow-xl border border-emerald-500/20">
-          <table className="min-w-full divide-y divide-emerald-500/15">
-            <thead className="bg-[#0a0d12]/70">
-              <tr>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Título
-                </th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Categoría / Sede
-                </th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Origen
-                </th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Estado
-                </th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Fecha
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-emerald-500/10">
-              {incidents.map((inc) => (
-                <tr key={inc.id as string} className="hover:bg-emerald-500/5 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-semibold text-white">{inc.title as string}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-xs font-medium text-emerald-300">{inc.category as string}</div>
-                    <div className="text-[11px] text-slate-400">{inc.branch as string}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-300">
-                    {inc.origin as string}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <select
-                      value={inc.status as string}
-                      onChange={(e) =>
-                        handleStatusChange(inc.id as string, inc.status as string, e.target.value)
-                      }
-                      className={`text-xs font-semibold rounded-full px-3 py-1 border bg-[#0a0d12] ${
-                        inc.status === 'open'
-                          ? 'text-amber-200 border-amber-300/40'
-                          : inc.status === 'in_progress'
-                          ? 'text-teal-300 border-teal-400/40'
-                          : inc.status === 'resolved'
-                          ? 'text-emerald-300 border-emerald-400/40'
-                          : 'text-slate-400 border-slate-600'
+      ) : (() => {
+        const totalItems = incidents.length;
+        const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        const safePage = Math.min(currentPage, totalPages);
+        const startIdx = (safePage - 1) * PAGE_SIZE;
+        const paginatedIncidents = incidents.slice(startIdx, startIdx + PAGE_SIZE);
+        const rangeStart = startIdx + 1;
+        const rangeEnd = Math.min(startIdx + PAGE_SIZE, totalItems);
+
+        const goToPage = (page: number) => {
+          setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+          listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        return (
+          <div ref={listTopRef} className="scroll-mt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
+              <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider">
+                Mostrando {rangeStart}–{rangeEnd} de {totalItems} incidencias · Página {safePage} de {totalPages}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto bg-[#121721]/80 rounded-2xl shadow-xl border border-emerald-500/20">
+              <table className="min-w-full divide-y divide-emerald-500/15">
+                <thead className="bg-[#0a0d12]/70">
+                  <tr>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Título
+                    </th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Categoría / Sede
+                    </th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Origen
+                    </th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Estado
+                    </th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Fecha
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-emerald-500/10">
+                  {paginatedIncidents.map((inc) => {
+                    const id = inc.id as string;
+                    const description = (inc.description as string) || '';
+                    const isExpanded = expandedId === id;
+
+                    return (
+                      <React.Fragment key={id}>
+                        <tr
+                          onClick={() => setExpandedId(isExpanded ? null : id)}
+                          className="hover:bg-emerald-500/5 transition-colors cursor-pointer"
+                        >
+                          <td className="px-6 py-4 max-w-md">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-emerald-400/80 font-mono">
+                                {isExpanded ? '▾' : '▸'}
+                              </span>
+                              <span className="text-sm font-semibold text-white">
+                                {inc.title as string}
+                              </span>
+                            </div>
+                            {description && !isExpanded && (
+                              <p className="mt-1 pl-4 text-xs text-slate-400 truncate">
+                                {description}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-xs font-medium text-emerald-300">{inc.category as string}</div>
+                            <div className="text-[11px] text-slate-400">{inc.branch as string}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-300">
+                            {inc.origin as string}
+                          </td>
+                          <td
+                            className="px-6 py-4 whitespace-nowrap"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <select
+                              value={inc.status as string}
+                              onChange={(e) =>
+                                handleStatusChange(id, inc.status as string, e.target.value)
+                              }
+                              className={`text-xs font-semibold rounded-full px-3 py-1 border bg-[#0a0d12] ${
+                                inc.status === 'open'
+                                  ? 'text-amber-200 border-amber-300/40'
+                                  : inc.status === 'in_progress'
+                                  ? 'text-teal-300 border-teal-400/40'
+                                  : inc.status === 'resolved'
+                                  ? 'text-emerald-300 border-emerald-400/40'
+                                  : 'text-slate-400 border-slate-600'
+                              }`}
+                            >
+                              <option value="open">Open</option>
+                              <option value="in_progress">In Progress</option>
+                              <option value="resolved">Resolved</option>
+                              <option value="discarded">Discarded</option>
+                            </select>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-xs font-mono text-slate-400">
+                            {new Date(inc.created_at as string).toLocaleDateString()}
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="bg-[#0a0d12]/70">
+                            <td colSpan={5} className="px-6 py-4">
+                              <div className="rounded-xl border border-emerald-500/20 bg-[#121721]/80 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                  <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-400">
+                                    Descripción de la incidencia
+                                  </span>
+                                  <span className="text-[11px] font-mono text-slate-500">
+                                    ID: {id}
+                                  </span>
+                                </div>
+                                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">
+                                  {description || 'Sin descripción registrada.'}
+                                </p>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <nav
+                aria-label="Paginación de incidencias"
+                className="mt-6 flex flex-wrap items-center justify-center gap-2 pb-4"
+              >
+                <button
+                  type="button"
+                  onClick={() => goToPage(safePage - 1)}
+                  disabled={safePage === 1}
+                  className="rounded-xl border border-emerald-500/25 bg-[#121721]/90 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  &larr; Anterior
+                </button>
+
+                {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
+                  const isCurrent = pageNum === safePage;
+                  return (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => goToPage(pageNum)}
+                      aria-current={isCurrent ? 'page' : undefined}
+                      className={`min-w-[36px] rounded-xl px-3 py-2 text-xs font-mono font-bold transition ${
+                        isCurrent
+                          ? 'border border-emerald-400 bg-emerald-400 text-[#0a0d12] shadow-[0_0_16px_rgba(16,185,129,0.3)]'
+                          : 'border border-slate-700/70 bg-[#121721]/90 text-slate-300 hover:border-emerald-400/50 hover:text-emerald-300'
                       }`}
                     >
-                      <option value="open">Open</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="discarded">Discarded</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-xs font-mono text-slate-400">
-                    {new Date(inc.created_at as string).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => goToPage(safePage + 1)}
+                  disabled={safePage === totalPages}
+                  className="rounded-xl border border-emerald-500/25 bg-[#121721]/90 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Siguiente &rarr;
+                </button>
+              </nav>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

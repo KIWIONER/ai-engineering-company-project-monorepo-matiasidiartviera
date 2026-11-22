@@ -99,16 +99,16 @@ export default function CandidateExpedientePage({ params }: PageProps) {
       </div>
 
       {/* Cabecera del Expediente */}
-      <section className="rounded-2xl border border-slate-700/60 bg-[#121721]/90 backdrop-blur-xl p-6 sm:p-8 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-800/80 pb-6">
+      <section className="rounded-2xl border border-stone-500/50 bg-[#ddd9ce]/90 backdrop-blur-xl p-6 sm:p-8 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-stone-400/70 pb-6">
           <div>
-            <span className="text-xs font-mono uppercase tracking-wider text-emerald-400/80">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-800">
               ID #{candidate.id}
             </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
               {candidate.name}
             </h1>
-            <p className="text-sm font-semibold text-slate-300 mt-1">
+            <p className="text-sm font-semibold text-slate-700 mt-1">
               {candidate.position}
             </p>
             <div className="flex flex-wrap items-center gap-2 mt-4">
@@ -118,7 +118,7 @@ export default function CandidateExpedientePage({ params }: PageProps) {
           </div>
 
           {/* Chip Score IA */}
-          <div className="inline-flex items-center rounded-xl border border-emerald-400/35 bg-[#0b1017] p-1 shadow-[0_4px_12px_rgba(0,0,0,0.4)] self-start">
+          <div className="inline-flex items-center rounded-xl border border-emerald-400/35 bg-[#0b1017] p-1 shadow-[0_4px_12px_rgba(0,0,0,0.25)] self-start">
             <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/25 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">
               <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
               SCORE IA
@@ -131,21 +131,21 @@ export default function CandidateExpedientePage({ params }: PageProps) {
 
         {/* Datos del Candidato */}
         <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 pt-6 text-xs">
-          <div className="rounded-xl border border-slate-800 bg-[#0d121a] p-4">
-            <dt className="text-slate-400 mb-1">Correo electrónico</dt>
-            <dd className="font-semibold text-white break-all">{candidate.email}</dd>
+          <div className="rounded-xl border border-stone-400/60 bg-[#ebe8e0]/90 p-4 shadow-sm">
+            <dt className="text-slate-700 mb-1">Correo electrónico</dt>
+            <dd className="font-semibold text-slate-900 break-all">{candidate.email}</dd>
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-[#0d121a] p-4">
-            <dt className="text-slate-400 mb-1">Teléfono</dt>
-            <dd className="font-semibold text-white">
+          <div className="rounded-xl border border-stone-400/60 bg-[#ebe8e0]/90 p-4 shadow-sm">
+            <dt className="text-slate-700 mb-1">Teléfono</dt>
+            <dd className="font-semibold text-slate-900">
               {candidate.phone || 'No especificado'}
             </dd>
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-[#0d121a] p-4">
-            <dt className="text-slate-400 mb-1">Experiencia</dt>
-            <dd className="font-bold text-amber-200">
+          <div className="rounded-xl border border-stone-400/60 bg-[#ebe8e0]/90 p-4 shadow-sm">
+            <dt className="text-slate-700 mb-1">Experiencia</dt>
+            <dd className="font-bold text-amber-900">
               {candidate.years_of_experience !== undefined &&
                 candidate.years_of_experience !== null
                 ? `${candidate.years_of_experience} años`
@@ -153,15 +153,15 @@ export default function CandidateExpedientePage({ params }: PageProps) {
             </dd>
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-[#0d121a] p-4">
-            <dt className="text-slate-400 mb-1">Enlaces</dt>
+          <div className="rounded-xl border border-stone-400/60 bg-[#ebe8e0]/90 p-4 shadow-sm">
+            <dt className="text-slate-700 mb-1">Enlaces</dt>
             <dd className="flex flex-wrap gap-3 font-semibold">
               {candidate.linkedin ? (
                 <a
                   href={candidate.linkedin}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-emerald-300 hover:underline"
+                  className="text-emerald-800 hover:underline"
                 >
                   LinkedIn &rarr;
                 </a>
@@ -171,13 +171,13 @@ export default function CandidateExpedientePage({ params }: PageProps) {
                   href={resumeLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-amber-200 hover:underline"
+                  className="text-amber-900 hover:underline"
                 >
                   CV / Resume &rarr;
                 </a>
               ) : null}
               {!candidate.linkedin && !resumeLink && (
-                <span className="text-slate-500">Sin enlaces</span>
+                <span className="text-slate-600">Sin enlaces</span>
               )}
             </dd>
           </div>

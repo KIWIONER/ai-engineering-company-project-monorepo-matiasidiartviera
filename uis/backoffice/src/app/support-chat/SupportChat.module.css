@@ -1,0 +1,201 @@
+.main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  color: #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 64px);
+  box-sizing: border-box;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.chatColumn {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 560px;
+}
+
+.sessionsCard {
+  display: flex;
+  flex-direction: column;
+  background: rgba(18, 23, 33, 0.9);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  min-height: 260px;
+  max-height: 420px;
+  overflow: hidden;
+}
+
+.sessionsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.sessionsTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.sessionsCount {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 9999px;
+  padding: 0.1rem 0.45rem;
+}
+
+.refreshBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border-radius: 0.45rem;
+  background: #181f2c;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refreshBtn:hover:not(:disabled) {
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #6ee7b7;
+}
+
+.sessionsList {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-right: 0.15rem;
+}
+
+.sessionItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.6rem;
+  background: rgba(10, 13, 18, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: left;
+}
+
+.sessionItem:hover {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(24, 31, 44, 0.9);
+}
+
+.sessionItemActive {
+  border-color: rgba(16, 185, 129, 0.65);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.sessionInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.sessionPreview {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.sessionCode {
+  font-family: monospace;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.3rem;
+}
+
+.deleteBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border-radius: 0.4rem;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+
+.deleteBtn:hover:not(:disabled) {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.emptyState {
+  margin: auto;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.8rem;
+  padding: 1.5rem 0.5rem;
+}
+
+@media (min-width: 1024px) {
+  .main {
+    height: calc(100vh - 64px);
+    overflow: hidden;
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    overflow: hidden;
+  }
+
+  .chatColumn {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .sessionsCard {
+    max-height: none;
+    height: 100%;
+  }
+}

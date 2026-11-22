@@ -1,7 +1,10 @@
+from datetime import datetime
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query as FastAPIQuery
 from typing import List, Optional
 from packages.shared.validation import (
-    IncidentCreate, IncidentUpdateStatus, IncidentResponse, IncidentInDB,
+    IncidentCreate, IncidentUpdateStatus, IncidentAssignUpdate, IncidentNoteCreate,
+    IncidentResponse, IncidentInDB,
     IncidentStatus, IncidentOrigin, IncidentBranch, IncidentCategory
 )
 from services.api.database import get_tinydb as get_db
@@ -120,7 +123,64 @@ def update_status(id: str, update: IncidentUpdateStatus, current_user: dict = De
             detail=f"Transición de estado no válida. No se puede pasar de {current_status} a {new_status}."
         )
         
-    incidents_table.update({"status": new_status}, IncidentQ.id == id)
+    incidents_table.update(
+        {"status": new_status, "updated_at": datetime.utcnow().isoformat()},
+        IncidentQ.id == id,
+    )
     
     updated_record = incidents_table.search(IncidentQ.id == id)[0]
     return updated_record
+
+
+@router.patch("/{id}/assign", response_model=IncidentResponse)
+def assign_incident(
+    id: str,
+    payload: IncidentAssignUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Asigna o desasigna un responsable a la incidencia."""
+    db = get_db()
+    incidents_table = db.table('incidents')
+    IncidentQ = Query()
+    result = incidents_table.search(IncidentQ.id == id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Incidencia no encontrada")
+
+    assigned = payload.assigned_to.strip() if payload.assigned_to else None
+    incidents_table.update(
+        {"assigned_to": assigned or None, "updated_at": datetime.utcnow().isoformat()},
+        IncidentQ.id == id,
+    )
+    return incidents_table.search(IncidentQ.id == id)[0]
+
+
+@router.post("/{id}/notes", response_model=IncidentResponse)
+def add_incident_note(
+    id: str,
+    payload: IncidentNoteCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Registra una nota de seguimiento o resolución en la incidencia."""
+    db = get_db()
+    incidents_table = db.table('incidents')
+    IncidentQ = Query()
+    result = incidents_table.search(IncidentQ.id == id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Incidencia no encontrada")
+
+    current_record = result[0]
+    notes = list(current_record.get("resolution_notes") or [])
+    author = str(current_user.get("email") or current_user.get("username") or "Agente")
+    notes.append(
+        {
+            "id": str(uuid.uuid4()),
+            "author": author,
+            "content": payload.content.strip(),
+            "created_at": datetime.utcnow().isoformat(),
+        }
+    )
+    incidents_table.update(
+        {"resolution_notes": notes, "updated_at": datetime.utcnow().isoformat()},
+        IncidentQ.id == id,
+    )
+    return incidents_table.search(IncidentQ.id == id)[0]

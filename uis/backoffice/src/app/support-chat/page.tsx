@@ -1,20 +1,33 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
 import { useSupportChatWS } from "@/hooks/useSupportChatWs";
+import styles from "./SupportChat.module.css";
 import {
     AlertTriangle,
     ArrowLeft,
     Bot,
+    History,
     PlusCircle,
     Radio,
+    RefreshCw,
     Send,
     Square,
+    Trash2,
     User,
     WifiOff,
 } from "lucide-react";
+
+interface SupportSessionSummary {
+    session_id: string;
+    agent_id: string;
+    status: string;
+    created_at: string;
+    message_count: number;
+    preview: string;
+}
 
 const SESSION_STORAGE_KEY = "nexova_support_session_id";
 
@@ -25,10 +38,53 @@ function generateSessionId(): string {
     return `chat_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function renderFormattedContent(raw: string): React.ReactNode {
+    const cleaned = raw
+        .replace(/<external_data[^>]*>\s*/gi, "")
+        .replace(/\s*<\/external_data>/gi, "");
+
+    const parts = cleaned.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, idx) => {
+        if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+            return <strong key={idx}>{part.slice(2, -2)}</strong>;
+        }
+        return <React.Fragment key={idx}>{part}</React.Fragment>;
+    });
+}
+
 export default function SupportChatPage() {
     const [sessionId, setSessionId] = useState<string>("");
     const [inputText, setInputText] = useState("");
+    const [sessions, setSessions] = useState<SupportSessionSummary[]>([]);
+    const [loadingSessions, setLoadingSessions] = useState(false);
+    const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
     const bottomRef = useRef<HTMLDivElement | null>(null);
+
+    const getAuthHeaders = useCallback((): HeadersInit => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    }, []);
+
+    const fetchSessions = useCallback(async () => {
+        setLoadingSessions(true);
+        try {
+            const res = await fetch("/backend-api/agent/sessions", {
+                headers: getAuthHeaders(),
+            });
+            if (res.status === 401) {
+                window.location.href = "/login";
+                return;
+            }
+            if (res.ok) {
+                const data = await res.json();
+                setSessions(Array.isArray(data.sessions) ? data.sessions : []);
+            }
+        } catch {
+            // Silencioso: no bloquear el chat si falla la recarga de historial
+        } finally {
+            setLoadingSessions(false);
+        }
+    }, [getAuthHeaders]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -64,6 +120,12 @@ export default function SupportChatPage() {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
+    useEffect(() => {
+        if (sessionId) {
+            fetchSessions();
+        }
+    }, [sessionId, messages.length, fetchSessions]);
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!inputText.trim() || connectionStatus !== "connected") return;
@@ -77,20 +139,40 @@ export default function SupportChatPage() {
         setSessionId(fresh);
     };
 
+    const handleSelectSession = (targetId: string) => {
+        if (targetId === sessionId) return;
+        localStorage.setItem(SESSION_STORAGE_KEY, targetId);
+        setSessionId(targetId);
+    };
+
+    const handleDeleteSession = async (
+        e: React.MouseEvent,
+        targetId: string
+    ) => {
+        e.stopPropagation();
+        setDeletingSessionId(targetId);
+        try {
+            const res = await fetch(`/backend-api/agent/sessions/${encodeURIComponent(targetId)}`, {
+                method: "DELETE",
+                headers: getAuthHeaders(),
+            });
+            if (res.ok) {
+                const remaining = sessions.filter((s) => s.session_id !== targetId);
+                setSessions(remaining);
+                if (targetId === sessionId) {
+                    const nextId = remaining[0]?.session_id || generateSessionId();
+                    localStorage.setItem(SESSION_STORAGE_KEY, nextId);
+                    setSessionId(nextId);
+                }
+            }
+        } finally {
+            setDeletingSessionId(null);
+        }
+    };
+
     return (
         <AuthGuard>
-            <main
-                style={{
-                    maxWidth: "960px",
-                    margin: "0 auto",
-                    padding: "2rem 1.5rem",
-                    color: "#f1f5f9",
-                    display: "flex",
-                    flexDirection: "column",
-                    height: "100vh",
-                    boxSizing: "border-box",
-                }}
-            >
+            <main className={styles.main}>
                 {/* Cabecera */}
                 <header
                     style={{
@@ -218,11 +300,15 @@ export default function SupportChatPage() {
                     </div>
                 </header>
 
+                <div className={styles.layout}>
+                    <div className={styles.chatColumn}>
                 {/* Historial de mensajes */}
                 <section
                     style={{
                         flex: 1,
+                        minHeight: 0,
                         overflowY: "auto",
+                        overflowX: "hidden",
                         background: "#121721",
                         border: "1px solid rgba(148, 163, 184, 0.2)",
                         borderRadius: "0.75rem",
@@ -271,6 +357,7 @@ export default function SupportChatPage() {
                                                         : "1px solid rgba(148, 163, 184, 0.2)",
                                             color: "#f1f5f9",
                                             whiteSpace: "pre-wrap",
+                                            overflowWrap: "anywhere",
                                             lineHeight: 1.5,
                                             fontSize: "0.92rem",
                                         }}
@@ -306,10 +393,11 @@ export default function SupportChatPage() {
                                             )}
                                         </div>
                                         <div>
-                                            {msg.content ||
-                                                (msg.status === "interrupted"
+                                            {msg.content
+                                                ? renderFormattedContent(msg.content)
+                                                : msg.status === "interrupted"
                                                     ? "(Generación interrumpida antes de emitir tokens)"
-                                                    : "")}
+                                                    : ""}
                                             {msg.status === "streaming" && (
                                                 <span style={{ color: "#10b981", marginLeft: "2px" }}>
                                                     ▌
@@ -405,6 +493,85 @@ export default function SupportChatPage() {
                         {isGenerating ? "Interrumpir y Redirigir" : "Enviar"}
                     </button>
                 </form>
+                    </div>
+
+                    {/* Lateral derecho: Historial de sesiones */}
+                    <aside className={styles.sessionsCard} aria-label="Historial de sesiones de soporte">
+                        <div className={styles.sessionsHeader}>
+                            <h2 className={styles.sessionsTitle}>
+                                <History size={15} color="#34d399" />
+                                Sesiones
+                                <span className={styles.sessionsCount}>{sessions.length}</span>
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={fetchSessions}
+                                disabled={loadingSessions}
+                                className={styles.refreshBtn}
+                                title="Actualizar sesiones"
+                                aria-label="Actualizar sesiones"
+                            >
+                                <RefreshCw size={14} />
+                            </button>
+                        </div>
+
+                        <div className={styles.sessionsList}>
+                            {sessions.length === 0 ? (
+                                <p className={styles.emptyState}>
+                                    {loadingSessions
+                                        ? "Cargando sesiones..."
+                                        : "Aún no hay sesiones registradas."}
+                                </p>
+                            ) : (
+                                sessions.map((item) => {
+                                    const isActive = item.session_id === sessionId;
+                                    const dateLabel = new Date(item.created_at).toLocaleString("es-ES", {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                    });
+                                    return (
+                                        <div
+                                            key={item.session_id}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => handleSelectSession(item.session_id)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter" || e.key === " ") {
+                                                    e.preventDefault();
+                                                    handleSelectSession(item.session_id);
+                                                }
+                                            }}
+                                            className={`${styles.sessionItem} ${
+                                                isActive ? styles.sessionItemActive : ""
+                                            }`}
+                                        >
+                                            <div className={styles.sessionInfo}>
+                                                <p className={styles.sessionPreview}>{item.preview}</p>
+                                                <div className={styles.sessionMeta}>
+                                                    <span className={styles.sessionCode}>{item.session_id}</span>
+                                                    <span>{item.message_count} msgs</span>
+                                                    <span>{dateLabel}</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleDeleteSession(e, item.session_id)}
+                                                disabled={deletingSessionId === item.session_id}
+                                                className={styles.deleteBtn}
+                                                title="Eliminar sesión"
+                                                aria-label={`Eliminar sesión ${item.session_id}`}
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </aside>
+                </div>
             </main>
         </AuthGuard>
     );

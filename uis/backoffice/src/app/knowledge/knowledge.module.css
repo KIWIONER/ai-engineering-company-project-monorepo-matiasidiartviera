@@ -1,13 +1,13 @@
-/* uis/backoffice/src/app/knowledge/knowledge.module.css */
+/* uis/backoffice/src/app/knowledge/knowledge.module.css — Emerald Command Center */
 
 .container {
-  max-width: 1200px;
+  max-width: 1280px;
   min-height: 100vh;
   margin: 0 auto;
   padding: 2.5rem 1.5rem 4rem;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #0f172a;
-  background-color: #ffffff;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #f1f5f9;
+  background-color: transparent;
 }
 
 /* Header */
@@ -17,7 +17,7 @@
   align-items: flex-start;
   margin-bottom: 2rem;
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.2);
   flex-wrap: wrap;
   gap: 1.5rem;
 }
@@ -25,34 +25,34 @@
 .titleArea {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .badgeExecutive {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.25rem 0.75rem;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-size: 0.8rem;
-  font-weight: 600;
+  padding: 0.3rem 0.85rem;
+  background: rgba(16, 185, 129, 0.12);
+  color: #fde68a;
+  font-size: 0.85rem;
+  font-weight: 700;
   border-radius: 9999px;
   width: fit-content;
-  border: 1px solid #bfdbfe;
+  border: 1px solid rgba(253, 230, 138, 0.3);
 }
 
 .title {
-  font-size: 2rem;
+  font-size: 2.1rem;
   font-weight: 800;
-  color: #0f172a;
+  color: #ffffff;
   letter-spacing: -0.025em;
   margin: 0;
 }
 
 .subtitle {
-  font-size: 0.95rem;
-  color: #64748b;
+  font-size: 1rem;
+  color: rgba(209, 250, 229, 0.72);
   margin: 0;
   max-width: 720px;
   line-height: 1.5;
@@ -61,6 +61,7 @@
 .headerActions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
 }
 
@@ -68,31 +69,33 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  background: #f8fafc;
-  color: #334155;
+  padding: 0.55rem 0.95rem;
+  background: rgba(18, 23, 33, 0.85);
+  color: #e2e8f0;
   font-size: 0.85rem;
   font-weight: 600;
-  border-radius: 0.5rem;
-  border: 1px solid #cbd5e1;
+  white-space: nowrap;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(16, 185, 129, 0.28);
   text-decoration: none;
   transition: all 0.2s ease;
 }
 
 .navLink:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-  color: #0f172a;
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.6);
+  color: #ffffff;
 }
 
 /* Query Section */
 .searchSection {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: rgba(18, 23, 33, 0.85);
+  border: 1px solid rgba(16, 185, 129, 0.22);
   border-radius: 1rem;
   padding: 1.75rem;
   margin-bottom: 2rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
 }
 
 .searchForm {
@@ -111,17 +114,21 @@
   flex: 1;
   padding: 0.85rem 1.15rem;
   font-size: 1rem;
-  border: 1px solid #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 0.65rem;
-  background: #ffffff;
-  color: #0f172a;
+  background: #0a0d12;
+  color: #f1f5f9;
   outline: none;
   transition: all 0.2s ease;
 }
 
+.inputField::placeholder {
+  color: #64748b;
+}
+
 .inputField:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
 }
 
 .btnPrimary {
@@ -129,23 +136,25 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.85rem 1.5rem;
-  background: #2563eb;
-  color: #ffffff;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #0a0d12;
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: 700;
   border: none;
   border-radius: 0.65rem;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: filter 0.2s ease, transform 0.15s ease;
   white-space: nowrap;
 }
 
 .btnPrimary:hover:not(:disabled) {
-  background: #1d4ed8;
+  filter: brightness(1.1);
+  transform: translateY(-1px);
 }
 
 .btnPrimary:disabled {
-  background: #94a3b8;
+  background: #334155;
+  color: #94a3b8;
   cursor: not-allowed;
 }
 
@@ -153,15 +162,15 @@
 .suggestionsArea {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
 }
 
 .suggestionsTitle {
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
   text-transform: uppercase;
-  color: #64748b;
-  letter-spacing: 0.05em;
+  color: #94a3b8;
+  letter-spacing: 0.06em;
 }
 
 .pillsList {
@@ -171,11 +180,11 @@
 }
 
 .pillBtn {
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
-  color: #3b82f6;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
   border-radius: 9999px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -183,9 +192,9 @@
 }
 
 .pillBtn:hover {
-  background: #dbeafe;
-  color: #1d4ed8;
-  border-color: #93c5fd;
+  background: rgba(16, 185, 129, 0.22);
+  color: #ffffff;
+  border-color: #10b981;
 }
 
 /* Loading State */
@@ -195,8 +204,8 @@
   align-items: center;
   justify-content: center;
   padding: 3rem 1.5rem;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  background: rgba(18, 23, 33, 0.75);
+  border: 1px dashed rgba(16, 185, 129, 0.35);
   border-radius: 1rem;
   margin-bottom: 2rem;
   gap: 1rem;
@@ -205,8 +214,8 @@
 .spinner {
   width: 2.25rem;
   height: 2.25rem;
-  border: 3px solid #e2e8f0;
-  border-top-color: #2563eb;
+  border: 3px solid rgba(148, 163, 184, 0.2);
+  border-top-color: #10b981;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -220,7 +229,7 @@
 .loadingText {
   font-size: 0.95rem;
   font-weight: 500;
-  color: #64748b;
+  color: #cbd5e1;
 }
 
 /* Error Banner */
@@ -229,22 +238,22 @@
   align-items: flex-start;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid rgba(248, 113, 113, 0.45);
   border-radius: 0.75rem;
-  color: #991b1b;
+  color: #fecaca;
   font-size: 0.9rem;
   margin-bottom: 2rem;
 }
 
 /* Answer Card */
 .answerCard {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: rgba(18, 23, 33, 0.88);
+  border: 1px solid rgba(16, 185, 129, 0.25);
   border-radius: 1rem;
   padding: 1.75rem;
   margin-bottom: 2rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 .answerHeader {
@@ -253,7 +262,7 @@
   justify-content: space-between;
   margin-bottom: 1.25rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .answerLabel {
@@ -262,19 +271,19 @@
   gap: 0.5rem;
   font-size: 0.95rem;
   font-weight: 700;
-  color: #0f172a;
+  color: #ffffff;
 }
 
 .answerContent {
   font-size: 1rem;
   line-height: 1.7;
-  color: #1e293b;
+  color: #e2e8f0;
   white-space: pre-wrap;
 }
 
 .answerRefusal {
-  color: #92400e;
-  background: #fffbeb;
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.12);
   padding: 1rem 1.25rem;
   border-radius: 0.5rem;
   border-left: 4px solid #f59e0b;
@@ -284,16 +293,16 @@
 .sourcesSection {
   margin-top: 1.75rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .sourcesHeader {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 700;
-  color: #475569;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 1rem;
@@ -306,8 +315,8 @@
 }
 
 .sourceCard {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #181f2c;
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 0.75rem;
   padding: 1rem;
   display: flex;
@@ -318,7 +327,7 @@
 
 .sourceCard:hover {
   transform: translateY(-2px);
-  border-color: #94a3b8;
+  border-color: rgba(16, 185, 129, 0.5);
 }
 
 .sourceMeta {
@@ -331,37 +340,36 @@
 .sourceDoc {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #1e40af;
-  background: #eff6ff;
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.25rem;
+  color: #fde68a;
+  background: rgba(253, 230, 138, 0.1);
+  padding: 0.15rem 0.55rem;
+  border-radius: 0.3rem;
 }
 
 .sourceScore {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #15803d;
-  background: #f0fdf4;
-  padding: 0.15rem 0.4rem;
-  border-radius: 0.25rem;
-  border: 1px solid #bbf7d0;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.14);
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(16, 185, 129, 0.35);
 }
 
 .sourceSection {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #0f172a;
+  color: #f8fafc;
 }
 
 .sourceText {
   font-size: 0.8rem;
-  color: #475569;
+  color: #cbd5e1;
   line-height: 1.5;
   max-height: 120px;
   overflow-y: auto;
-  padding: 0.5rem;
-  background: #ffffff;
-  border-radius: 0.35rem;
-  border: 1px solid #f1f5f9;
+  padding: 0.6rem;
+  background: #0a0d12;
+  border-radius: 0.4rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
 }
-

@@ -13,6 +13,7 @@ export default function InboundPage() {
 
   // Estado del formulario
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
   const [quantity, setQuantity] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
@@ -23,6 +24,13 @@ export default function InboundPage() {
       try {
         const data = await inventoryService.getProducts();
         setAssets(data);
+        const params = new URLSearchParams(window.location.search);
+        const preselectedId = params.get("asset_id")?.trim();
+        if (preselectedId && data.some((a) => a.id.toString() === preselectedId)) {
+          setSelectedAssetId(preselectedId);
+        } else {
+          setShowPicker(true);
+        }
       } catch (err: any) {
         setErrorMsg(err.message || "No se pudieron cargar los activos.");
       } finally {
@@ -31,6 +39,8 @@ export default function InboundPage() {
     };
     fetchAssets();
   }, []);
+
+  const selectedAsset = assets.find((a) => a.id.toString() === selectedAssetId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,10 +65,17 @@ export default function InboundPage() {
         expected_delivery_date: new Date().toISOString()
       });
 
+      const addedUnits = Number(quantity);
       setSuccessMsg(`¡Éxito! Se registraron ${quantity} unidades de ${assetName}.`);
+      setAssets((prev) =>
+        prev.map((a) =>
+          a.id.toString() === selectedAssetId
+            ? { ...a, current_stock: a.current_stock + addedUnits }
+            : a
+        )
+      );
 
-      // Limpiar formulario tras el éxito
-      setSelectedAssetId("");
+      // Limpiar solo la cantidad para mantener el activo seleccionado
       setQuantity("");
     } catch (err: any) {
       setErrorMsg(err.message || "Hubo un error al registrar la entrada.");
@@ -97,20 +114,66 @@ export default function InboundPage() {
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.formGroup}>
-            <label className={styles.label}>Activo a ingresar</label>
-            <select
-              className={styles.select}
-              value={selectedAssetId}
-              onChange={(e) => setSelectedAssetId(e.target.value)}
-              disabled={isSubmitting}
-            >
-              <option value="">-- Selecciona un activo --</option>
-              {assets.map(asset => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.name} (SKU: {asset.sku})
-                </option>
-              ))}
-            </select>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+              <label className={styles.label}>Activo a ingresar</label>
+              {selectedAsset && !showPicker && (
+                <button
+                  type="button"
+                  onClick={() => setShowPicker(true)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#34d399",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Cambiar activo
+                </button>
+              )}
+            </div>
+
+            {selectedAsset && !showPicker ? (
+              <div
+                style={{
+                  padding: "0.9rem 1rem",
+                  borderRadius: "0.65rem",
+                  background: "rgba(16, 185, 129, 0.1)",
+                  border: "1px solid rgba(16, 185, 129, 0.35)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.35rem",
+                }}
+              >
+                <div style={{ fontWeight: 700, color: "#ffffff", fontSize: "0.95rem" }}>
+                  {selectedAsset.name}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", fontSize: "0.8rem", color: "#a7f3d0" }}>
+                  <span>SKU: <strong>{selectedAsset.sku}</strong></span>
+                  <span>Depto: <strong>{selectedAsset.department}</strong></span>
+                  <span>Stock actual: <strong>{selectedAsset.current_stock} uds.</strong></span>
+                </div>
+              </div>
+            ) : (
+              <select
+                className={styles.select}
+                value={selectedAssetId}
+                onChange={(e) => {
+                  setSelectedAssetId(e.target.value);
+                  if (e.target.value) setShowPicker(false);
+                }}
+                disabled={isSubmitting}
+              >
+                <option value="">-- Selecciona un activo --</option>
+                {assets.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.name} (SKU: {asset.sku})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className={styles.formGroup}>

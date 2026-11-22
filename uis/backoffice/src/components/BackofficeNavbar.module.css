@@ -1,0 +1,221 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: rgba(13, 17, 24, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.22);
+}
+
+.inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 800;
+  color: #ffffff;
+  font-size: 0.95rem;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.logoBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, #34d399, #0f766e);
+  color: #0a0d12;
+  font-weight: 900;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);
+}
+
+.desktopNav {
+  display: none;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.navLink {
+  padding: 0.42rem 0.75rem;
+  border-radius: 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #cbd5e1;
+  background-color: transparent;
+  border: 1px solid transparent;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.navLink:hover {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #ffffff;
+}
+
+.navLinkActive {
+  font-weight: 700;
+  color: #6ee7b7;
+  background-color: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+.desktopCtas {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.ctaAdmin {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.85rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6ee7b7;
+  background-color: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.ctaAdmin:hover {
+  background-color: #34d399;
+  color: #0a0d12;
+}
+
+.ctaWebsite {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.85rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fde68a;
+  background-color: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(253, 230, 138, 0.35);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.ctaWebsite:hover {
+  border-color: rgba(253, 230, 138, 0.75);
+  background-color: rgba(253, 230, 138, 0.15);
+}
+
+.menuButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background-color: rgba(16, 185, 129, 0.08);
+  color: #6ee7b7;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+
+.menuButton:hover {
+  background-color: rgba(16, 185, 129, 0.18);
+}
+
+.mobileDropdown {
+  border-top: 1px solid rgba(16, 185, 129, 0.2);
+  background-color: rgba(18, 23, 33, 0.96);
+  padding: 1rem 1.25rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.55);
+}
+
+.mobileList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mobileLink {
+  display: block;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.55rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.mobileLink:hover {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+}
+
+.mobileLinkActive {
+  font-weight: 700;
+  color: #6ee7b7;
+  background-color: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.mobileCtas {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(16, 185, 129, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mobileCtaLink {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 0.6rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+@media (min-width: 1280px) {
+  .desktopNav {
+    display: flex;
+  }
+
+  .desktopCtas {
+    display: flex;
+  }
+
+  .menuButton,
+  .mobileDropdown {
+    display: none;
+  }
+}
+
+@media (min-width: 640px) {
+  .mobileCtas {
+    flex-direction: row;
+  }
+}
