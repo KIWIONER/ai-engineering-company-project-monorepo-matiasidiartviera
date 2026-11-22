@@ -20,6 +20,7 @@ from packages.shared.validation import (
 from services.api.database import get_tinydb
 from mcps.company_tools.config import settings
 from mcps.company_tools.auth import check_tool_scope, log_tool_invocation
+from services.agent.action_gate import build_hitl_confirmation_message, review_action
 
 logger = logging.getLogger("nexova.mcp_incidents")
 
@@ -171,14 +172,19 @@ def register_incident_tools(mcp: FastMCP) -> None:
             "Operación de escritura. Requiere el scope OAuth 'incidents:write'."
         ),
     )
-    async def incidents_update_status(ticket_id: str, new_status: str) -> Dict[str, Any]:
+    async def incidents_update_status(
+        ticket_id: str,
+        new_status: str,
+        approved: bool = False,
+    ) -> Dict[str, Any]:
         """
         Args:
             ticket_id: Identificador UUID de la incidencia a actualizar.
             new_status: Nuevo estado deseado ('open', 'in_progress', 'resolved', 'discarded').
+            approved: Aprobación humana explícita (HITL) requerida para cerrar/descartar tickets.
 
         Returns:
-            Dict confirmando la actualización con el registro actualizado.
+            Dict confirmando la actualización o solicitando confirmación HITL.
         """
         tool_name = "incidents_update_status"
         auth_info = check_tool_scope(settings.scope_incidents_write, tool_name)
@@ -197,6 +203,31 @@ def register_incident_tools(mcp: FastMCP) -> None:
                 "error": "invalid_status",
                 "message": f"Estado '{new_status}' no reconocido. Estados válidos: {valid_names}",
             }
+
+        # Compuerta HITL (NIST Protect): cerrar o descartar ticket exige confirmación explícita
+        if target_status in {IncidentStatus.resolved, IncidentStatus.discarded}:
+            caller_tenant = (auth_info.claims or {}).get("tenant_id") or (auth_info.claims or {}).get("branch")
+            gate_action = {
+                "type": "resolve_sensitive_ticket",
+                "target": clean_id,
+                "ticket_id": clean_id,
+                "records": 1,
+            }
+            verdict = review_action(gate_action, caller_tenant=caller_tenant)
+            if verdict == "denied":
+                log_tool_invocation(tool_name, client_id, "DENIED_BY_GATE", {"ticket_id": clean_id})
+                raise PermissionError("Permiso denegado: acción rechazada por la compuerta de seguridad.")
+            if verdict == "confirm" and not approved:
+                hitl_msg = build_hitl_confirmation_message(gate_action)
+                log_tool_invocation(tool_name, client_id, "HITL_REQUIRED", {"ticket_id": clean_id, "target_status": target_status.value})
+                return {
+                    "status": "hitl_confirmation_required",
+                    "requires_confirmation": True,
+                    "action": "resolve_sensitive_ticket",
+                    "ticket_id": clean_id,
+                    "target_status": target_status.value,
+                    "message": hitl_msg,
+                }
 
         # 1. Intentar actualización vía HTTP PATCH /api/incidents/{id}/status
         try:

@@ -240,10 +240,10 @@ function renderCandidates() {
 
   const allCandidates = readCandidates();
   
-  containerNuevos.innerHTML = "";
-  candidatesContactados.innerHTML = "";
-  candidatesPreseleccionados.innerHTML = "";
-  candidatesSeleccionados.innerHTML = "";
+  containerNuevos.replaceChildren();
+  candidatesContactados.replaceChildren();
+  candidatesPreseleccionados.replaceChildren();
+  candidatesSeleccionados.replaceChildren();
 
   const sortOrder = sortSelect ? sortSelect.value : "desc";
 

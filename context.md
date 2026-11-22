@@ -118,7 +118,7 @@ Los SDRs prospectan manualmente en LinkedIn, exportan listas a Excel y hacen seg
 
 ---
 
-### 🧑‍🤝‍🧑 Recursos Humanos (interno)
+### 🧑🤝🧑 Recursos Humanos (interno)
 
 **Responsable:** Patricia Solís
 

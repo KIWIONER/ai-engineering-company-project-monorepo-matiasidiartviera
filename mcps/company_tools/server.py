@@ -83,9 +83,9 @@ def create_app():
     app.add_middleware(get_mcp_auth_middleware())
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.allowed_origins,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "Content-Type", "Mcp-Session-Id"],
         expose_headers=["Mcp-Session-Id", "WWW-Authenticate"],
     )
     return app

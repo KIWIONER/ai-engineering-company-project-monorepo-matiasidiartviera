@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from data.pipelines.rag import generate_answer, retrieve
 from services.api.routes.auth import get_current_user
+from services.api.rate_limiter import enforce_llm_guards
 
 logger = logging.getLogger("nexova.knowledge_route")
 
@@ -73,6 +74,7 @@ def query_knowledge_base(
     2. Síntesis generativa garantizando veracidad y honestidad.
     3. Retorno estructurado de la respuesta y las fuentes de evidencia.
     """
+    enforce_llm_guards(current_user, payload.question)
     logger.info(
         f"Usuario autenticado '{current_user.get('email', 'anon')}' consultando: '{payload.question}'"
     )

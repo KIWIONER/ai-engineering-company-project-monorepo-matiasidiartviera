@@ -435,41 +435,94 @@ function createTicketCard(ticket) {
   card.dataset.ticketId = ticket.ticket_id;
 
   const badgeClasses = severityClasses(ticket.nivel_gravedad, ticket.estado);
+  const assignId = `assign-${ticket.ticket_id}`;
+  const assignees = [
+    "Sin asignar",
+    "Roberto Diaz",
+    "Laura Mendoza",
+    "Carlos Gomez",
+    "Elena Vargas",
+  ];
 
-  card.innerHTML = `
-    <article
-      class="w-full text-left flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div class="flex items-center gap-4 sm:w-1/4 cursor-pointer" data-ticket-trigger="${ticket.ticket_id}" aria-label="Ver detalle del ticket ${ticket.ticket_id}">
-        <div>
-          <p class="text-[10px] font-bold uppercase tracking-wider text-blue-700">${ticket.ticket_id}</p>
-          <h3 class="text-sm font-semibold text-slate-900 leading-tight mt-0.5">${ticket.cliente_info.nombre}</h3>
-        </div>
-      </div>
-      
-      <div class="sm:w-1/4 px-3">
-        <label for="assign-${ticket.ticket_id}" class="sr-only">Asignado a</label>
-        <select id="assign-${ticket.ticket_id}" data-assign-ticket="${ticket.ticket_id}" class="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 focus:border-blue-500 focus:outline-none">
-          <option value="Sin asignar" ${ticket.asignado_a === 'Sin asignar' ? 'selected' : ''}>Sin asignar</option>
-          <option value="Roberto Diaz" ${ticket.asignado_a === 'Roberto Diaz' ? 'selected' : ''}>Roberto Diaz</option>
-          <option value="Laura Mendoza" ${ticket.asignado_a === 'Laura Mendoza' ? 'selected' : ''}>Laura Mendoza</option>
-          <option value="Carlos Gomez" ${ticket.asignado_a === 'Carlos Gomez' ? 'selected' : ''}>Carlos Gomez</option>
-          <option value="Elena Vargas" ${ticket.asignado_a === 'Elena Vargas' ? 'selected' : ''}>Elena Vargas</option>
-        </select>
-      </div>
+  const createEl = (tag, attrs = {}, ...children) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (key === "className") {
+        node.className = value;
+      } else if (key === "selected") {
+        node.selected = Boolean(value);
+      } else {
+        node.setAttribute(key, value);
+      }
+    }
+    for (const child of children) {
+      if (child !== null && child !== undefined) {
+        node.append(typeof child === "string" ? document.createTextNode(child) : child);
+      }
+    }
+    return node;
+  };
 
-      <div class="flex-1 text-sm text-slate-600 line-clamp-1 sm:line-clamp-2 sm:px-5 cursor-pointer" data-ticket-trigger="${ticket.ticket_id}">
-        ${ticket.resumen_problema}
-      </div>
+  const article = createEl(
+    "article",
+    { className: "w-full text-left flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between" },
+    createEl(
+      "div",
+      {
+        className: "flex items-center gap-4 sm:w-1/4 cursor-pointer",
+        "data-ticket-trigger": ticket.ticket_id,
+        "aria-label": `Ver detalle del ticket ${ticket.ticket_id}`,
+      },
+      createEl(
+        "div",
+        {},
+        createEl("p", { className: "text-[10px] font-bold uppercase tracking-wider text-blue-700" }, ticket.ticket_id),
+        createEl("h3", { className: "text-sm font-semibold text-slate-900 leading-tight mt-0.5" }, ticket.cliente_info.nombre)
+      )
+    ),
+    createEl(
+      "div",
+      { className: "sm:w-1/4 px-3" },
+      createEl("label", { for: assignId, className: "sr-only" }, "Asignado a"),
+      createEl(
+        "select",
+        {
+          id: assignId,
+          "data-assign-ticket": ticket.ticket_id,
+          className:
+            "w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 focus:border-blue-500 focus:outline-none",
+        },
+        ...assignees.map((name) =>
+          createEl("option", { value: name, selected: ticket.asignado_a === name }, name)
+        )
+      )
+    ),
+    createEl(
+      "div",
+      {
+        className: "flex-1 text-sm text-slate-600 line-clamp-1 sm:line-clamp-2 sm:px-5 cursor-pointer",
+        "data-ticket-trigger": ticket.ticket_id,
+      },
+      ticket.resumen_problema
+    ),
+    createEl(
+      "div",
+      {
+        className: "flex items-center justify-between sm:w-[180px] sm:justify-end gap-4 sm:gap-5 cursor-pointer",
+        "data-ticket-trigger": ticket.ticket_id,
+      },
+      createEl("p", { className: "text-xs text-slate-500 whitespace-nowrap" }, ticket.fecha.split(" ")[0]),
+      createEl(
+        "span",
+        {
+          className: `inline-flex min-w-[75px] justify-center rounded-full px-3 py-1 text-xs font-semibold ${badgeClasses}`,
+        },
+        ticket.nivel_gravedad
+      )
+    )
+  );
 
-      <div class="flex items-center justify-between sm:w-[180px] sm:justify-end gap-4 sm:gap-5 cursor-pointer" data-ticket-trigger="${ticket.ticket_id}">
-        <p class="text-xs text-slate-500 whitespace-nowrap">${ticket.fecha.split(" ")[0]}</p>
-        <span class="inline-flex min-w-[75px] justify-center rounded-full px-3 py-1 text-xs font-semibold ${badgeClasses}">
-          ${ticket.nivel_gravedad}
-        </span>
-      </div>
-    </article>
-  `;
+  card.replaceChildren(article);
 
   return card;
 }
@@ -581,7 +634,7 @@ function renderTicketDetail(ticket) {
   )}`;
   detailSummary.textContent = ticket.resumen_problema;
 
-  detailTranscript.innerHTML = "";
+  detailTranscript.replaceChildren();
   if (!ticket.historial_transcripcion.length) {
     const empty = document.createElement("p");
     empty.className = "text-sm text-slate-600";
@@ -629,83 +682,172 @@ function ensureTicketDetailOverlay() {
   overlay.className = "fixed inset-0 z-40 hidden bg-slate-900/50 p-4 sm:p-6";
   overlay.setAttribute("aria-label", "Detalle de ticket");
 
-  overlay.innerHTML = `
-    <article class="mx-auto max-h-[90vh] max-w-4xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6">
-      <header class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Detalle de ticket</p>
-          <h2 id="detailTicketId" class="mt-1 text-2xl font-bold text-blue-950">TK-XXXXXX</h2>
-        </div>
-        <button id="closeTicketDetail" type="button" class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-          Cerrar
-        </button>
-      </header>
+  const createEl = (tag, attrs = {}, ...children) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (key === "className") {
+        node.className = value;
+      } else {
+        node.setAttribute(key, value);
+      }
+    }
+    for (const child of children) {
+      if (child !== null && child !== undefined) {
+        node.append(typeof child === "string" ? document.createTextNode(child) : child);
+      }
+    }
+    return node;
+  };
 
-      <section class="mt-5 grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
-        <article>
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Cliente</h3>
-          <p id="detailClientName" class="mt-1 text-sm font-semibold text-slate-900">-</p>
-          <p id="detailClientEmail" class="text-sm text-slate-700">-</p>
-        </article>
-        <article>
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Estado</h3>
-          <div class="mt-1 flex items-center gap-2">
-            <span id="detailSeverity" class="rounded-md border px-2 py-1 text-xs font-semibold">-</span>
-            <span id="detailStatus" class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700">-</span>
-          </div>
-        </article>
-      </section>
+  const modalArticle = createEl(
+    "article",
+    {
+      className:
+        "mx-auto max-h-[90vh] max-w-4xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6",
+    },
+    createEl(
+      "header",
+      { className: "flex items-start justify-between gap-3" },
+      createEl(
+        "div",
+        {},
+        createEl("p", { className: "text-xs font-semibold uppercase tracking-wide text-blue-700" }, "Detalle de ticket"),
+        createEl("h2", { id: "detailTicketId", className: "mt-1 text-2xl font-bold text-blue-950" }, "TK-XXXXXX")
+      ),
+      createEl(
+        "button",
+        {
+          id: "closeTicketDetail",
+          type: "button",
+          className: "rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100",
+        },
+        "Cerrar"
+      )
+    ),
+    createEl(
+      "section",
+      { className: "mt-5 grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2" },
+      createEl(
+        "article",
+        {},
+        createEl("h3", { className: "text-xs font-semibold uppercase tracking-wide text-slate-600" }, "Cliente"),
+        createEl("p", { id: "detailClientName", className: "mt-1 text-sm font-semibold text-slate-900" }, "-"),
+        createEl("p", { id: "detailClientEmail", className: "text-sm text-slate-700" }, "-")
+      ),
+      createEl(
+        "article",
+        {},
+        createEl("h3", { className: "text-xs font-semibold uppercase tracking-wide text-slate-600" }, "Estado"),
+        createEl(
+          "div",
+          { className: "mt-1 flex items-center gap-2" },
+          createEl("span", { id: "detailSeverity", className: "rounded-md border px-2 py-1 text-xs font-semibold" }, "-"),
+          createEl(
+            "span",
+            {
+              id: "detailStatus",
+              className: "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700",
+            },
+            "-"
+          )
+        )
+      )
+    ),
+    createEl(
+      "section",
+      { className: "mt-5" },
+      createEl("h3", { className: "text-sm font-semibold text-blue-950" }, "Resumen del problema"),
+      createEl(
+        "p",
+        { id: "detailSummary", className: "mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700" },
+        "-"
+      )
+    ),
+    createEl(
+      "section",
+      { className: "mt-5" },
+      createEl("h3", { className: "text-sm font-semibold text-blue-950" }, "Historial de transcripcion"),
+      createEl("div", {
+        id: "detailTranscript",
+        className: "mt-2 max-h-48 overflow-y-auto grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3",
+      })
+    ),
+    createEl(
+      "section",
+      { id: "detailChatComposer", className: "mt-5 rounded-md border border-blue-200 bg-blue-50 p-4" },
+      createEl("h3", { className: "text-sm font-semibold text-blue-950" }, "Canal de seguimiento con cliente"),
+      createEl(
+        "p",
+        { id: "detailChatHint", className: "mt-1 text-xs text-blue-800" },
+        "Puedes enviar mensajes mientras el ticket este abierto."
+      ),
+      createEl(
+        "form",
+        { id: "detailChatForm", className: "mt-3" },
+        createEl("label", { for: "detailChatInput", className: "sr-only" }, "Escribe un mensaje al cliente"),
+        createEl(
+          "div",
+          { className: "flex flex-col gap-2 sm:flex-row" },
+          createEl("input", {
+            id: "detailChatInput",
+            name: "detailChatInput",
+            type: "text",
+            placeholder: "Escribe una actualizacion para el cliente...",
+            className:
+              "w-full rounded-md border border-blue-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/30",
+          }),
+          createEl(
+            "button",
+            {
+              id: "detailChatSend",
+              type: "submit",
+              className:
+                "inline-flex items-center justify-center rounded-md bg-blue-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-800",
+            },
+            "Enviar mensaje"
+          )
+        )
+      )
+    ),
+    createEl(
+      "section",
+      { id: "detailActions", className: "mt-5 rounded-md border border-blue-200 bg-blue-50 p-4" },
+      createEl("h3", { className: "text-sm font-semibold text-blue-950" }, "Acciones operativas"),
+      createEl(
+        "div",
+        { className: "mt-3 grid gap-2 sm:grid-cols-3" },
+        createEl(
+          "button",
+          {
+            id: "actionContactClient",
+            type: "button",
+            className: "rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-100",
+          },
+          "Contactar Cliente"
+        ),
+        createEl(
+          "button",
+          {
+            id: "actionVideoCall",
+            type: "button",
+            className: "rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-100",
+          },
+          "Videollamada"
+        ),
+        createEl(
+          "button",
+          {
+            id: "actionInviteEngineer",
+            type: "button",
+            className: "rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-100",
+          },
+          "Invitar Ingeniero"
+        )
+      )
+    )
+  );
 
-      <section class="mt-5">
-        <h3 class="text-sm font-semibold text-blue-950">Resumen del problema</h3>
-        <p id="detailSummary" class="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">-</p>
-      </section>
-
-      <section class="mt-5">
-        <h3 class="text-sm font-semibold text-blue-950">Historial de transcripcion</h3>
-        <div id="detailTranscript" class="mt-2 max-h-48 overflow-y-auto grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3"></div>
-      </section>
-
-      <section id="detailChatComposer" class="mt-5 rounded-md border border-blue-200 bg-blue-50 p-4">
-        <h3 class="text-sm font-semibold text-blue-950">Canal de seguimiento con cliente</h3>
-        <p id="detailChatHint" class="mt-1 text-xs text-blue-800">Puedes enviar mensajes mientras el ticket este abierto.</p>
-        <form id="detailChatForm" class="mt-3">
-          <label for="detailChatInput" class="sr-only">Escribe un mensaje al cliente</label>
-          <div class="flex flex-col gap-2 sm:flex-row">
-            <input
-              id="detailChatInput"
-              name="detailChatInput"
-              type="text"
-              placeholder="Escribe una actualizacion para el cliente..."
-              class="w-full rounded-md border border-blue-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700/30"
-            />
-            <button
-              id="detailChatSend"
-              type="submit"
-              class="inline-flex items-center justify-center rounded-md bg-blue-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-800"
-            >
-              Enviar mensaje
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section id="detailActions" class="mt-5 rounded-md border border-blue-200 bg-blue-50 p-4">
-        <h3 class="text-sm font-semibold text-blue-950">Acciones operativas</h3>
-        <div class="mt-3 grid gap-2 sm:grid-cols-3">
-          <button id="actionContactClient" type="button" class="rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-100">
-            Contactar Cliente
-          </button>
-          <button id="actionVideoCall" type="button" class="rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-100">
-            Videollamada
-          </button>
-          <button id="actionInviteEngineer" type="button" class="rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-100">
-            Invitar Ingeniero
-          </button>
-        </div>
-      </section>
-    </article>
-  `;
+  overlay.replaceChildren(modalArticle);
 
   document.body.appendChild(overlay);
 }
@@ -808,7 +950,7 @@ function renderAgentPanel() {
   }
 
   const tickets = readTickets();
-  board.innerHTML = "";
+  board.replaceChildren();
 
   const openTickets = tickets.filter((ticket) => ticket.estado === "Abierto");
 

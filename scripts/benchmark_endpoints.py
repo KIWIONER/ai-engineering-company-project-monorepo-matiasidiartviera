@@ -13,7 +13,9 @@ def run_benchmark():
 
     with TestClient(app) as client:
         admin_email = os.getenv("ADMIN_EMAIL", "admin@nexova.com")
-        admin_pass = os.getenv("ADMIN_PASSWORD", "nosimanda12345")
+        admin_pass = os.getenv("ADMIN_PASSWORD", "").strip()
+        if not admin_pass:
+            raise RuntimeError("ADMIN_PASSWORD no está configurada en el entorno.")
 
         login_res = client.post("/auth/login", data={"username": admin_email, "password": admin_pass})
         if login_res.status_code != 200:
